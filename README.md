@@ -189,13 +189,10 @@ Hosting:    Railway / Render (backend) + Vercel (frontend)
 Realtime:   Supabase or Socket.io
 ```
 
-Total estimated dev time for a polished v1: **4–6 weeks** with a 3-person team.
-
----
 
 ## Built For
 
-APOGEE 2026, BITS Pilani — Pilani Campus  
+APOGEE 2027, BITS Pilani — Pilani Campus  
 Built as an MVP to demonstrate the scheduling workflow concept.
 
 ---
