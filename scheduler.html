@@ -1,0 +1,2423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APOGEE Room Scheduler</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d0f18;
+  color: #c9cde0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.header {
+  padding: 12px 20px;
+  background: #13162a;
+  border-bottom: 1px solid #1e2240;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+.header h1 { font-size: 18px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+.header h1 span { color: #7c6af7; }
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+.stat-pill {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #1e2240;
+  color: #8891b8;
+}
+.stat-pill.conflict { background: #2e1a1a; color: #f87171; }
+
+.btn {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.btn-primary { background: #7c6af7; color: white; }
+.btn-primary:hover { background: #6b59e6; }
+.btn-outline {
+  background: transparent;
+  color: #8891b8;
+  border: 1px solid #1e2240;
+}
+.btn-outline:hover { background: #1e2240; color: #c9cde0; }
+
+/* ── Day Tabs ── */
+.day-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 20px;
+  background: #13162a;
+  border-bottom: 1px solid #1e2240;
+  flex-shrink: 0;
+}
+.day-tab {
+  padding: 5px 18px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #5a6080;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+.day-tab:hover { color: #c9cde0; background: #1a1d35; }
+.day-tab.active { background: #7c6af7; color: white; border-color: #7c6af7; }
+
+/* ── Room group filter bar ── */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: #10121f;
+  border-bottom: 1px solid #1e2240;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #5a6080;
+}
+.filter-chip {
+  padding: 3px 12px;
+  border-radius: 20px;
+  border: 1px solid #1e2240;
+  background: transparent;
+  color: #6870a0;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+.filter-chip.active { background: #1e2240; color: #c9cde0; border-color: #3a3f6e; }
+.filter-chip:hover { border-color: #3a3f6e; color: #c9cde0; }
+
+/* ── Main Grid ── */
+.grid-wrapper {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.schedule-table {
+  min-width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* Sticky room label column */
+.room-label-col { width: 160px; }
+
+.time-header-row th {
+  position: sticky;
+  top: 0;
+  background: #10121f;
+  z-index: 20;
+  padding: 6px 0;
+  border-bottom: 1px solid #1e2240;
+  font-size: 11px;
+  color: #3d4570;
+  font-weight: 500;
+  text-align: left;
+}
+.time-header-row th.corner-cell {
+  position: sticky;
+  left: 0;
+  z-index: 30;
+  background: #10121f;
+  border-right: 1px solid #1e2240;
+}
+.time-header-row th.hour-cell {
+  min-width: 60px;
+  padding-left: 4px;
+}
+
+/* Group header row */
+.group-header-row td {
+  background: #0d0f18;
+  padding: 6px 10px 4px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #3d4570;
+  border-bottom: 1px solid #151829;
+  position: sticky;
+  left: 0;
+}
+
+/* Room rows */
+.room-row { border-bottom: 1px solid #151829; }
+.room-row:hover .room-cell { background: #161929; }
+
+.room-cell {
+  position: sticky;
+  left: 0;
+  background: #10121f;
+  z-index: 10;
+  border-right: 1px solid #1e2240;
+  padding: 0 10px;
+  width: 160px;
+  min-width: 160px;
+  vertical-align: middle;
+  transition: background 0.1s;
+}
+.room-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8891b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.room-id {
+  font-size: 10px;
+  color: #3d4570;
+  margin-top: 1px;
+}
+
+.timeline-cell {
+  position: relative;
+  height: 52px;
+  background: #0d0f18;
+  min-width: 1440px;
+}
+
+/* Hour gridlines */
+.timeline-cell::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 0; right: 0;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 59px,
+    #151829 59px,
+    #151829 60px
+  );
+  pointer-events: none;
+}
+
+/* ── Event Blocks ── */
+.event-block {
+  position: absolute;
+  top: 5px;
+  height: 42px;
+  border-radius: 6px;
+  padding: 3px 7px;
+  cursor: grab;
+  overflow: hidden;
+  transition: box-shadow 0.15s, transform 0.1s;
+  border: 1px solid transparent;
+  user-select: none;
+}
+.event-block:hover {
+  z-index: 5;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+.event-block:active { cursor: grabbing; }
+
+.event-name {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+.event-club {
+  font-size: 10px;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Conflict styling */
+.event-block.conflict {
+  border: 1.5px solid #f87171 !important;
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent,
+    transparent 4px,
+    rgba(248,113,113,0.08) 4px,
+    rgba(248,113,113,0.08) 8px
+  ) !important;
+}
+.conflict-badge {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 10px;
+  background: #f87171;
+  color: white;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* ── Tooltip ── */
+.tooltip {
+  position: fixed;
+  background: #1e2240;
+  border: 1px solid #3a3f6e;
+  border-radius: 10px;
+  padding: 12px 14px;
+  z-index: 1000;
+  pointer-events: none;
+  max-width: 240px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  display: none;
+}
+.tooltip.visible { display: block; }
+.tooltip-title { font-size: 13px; font-weight: 700; color: #e0e4ff; margin-bottom: 4px; }
+.tooltip-club { font-size: 11px; color: #7c6af7; margin-bottom: 6px; font-weight: 600; }
+.tooltip-row { display: flex; gap: 8px; font-size: 11px; color: #6870a0; margin-top: 2px; }
+.tooltip-row span:last-child { color: #c9cde0; }
+.tooltip-conflict { margin-top: 6px; font-size: 11px; color: #f87171; font-weight: 600; }
+
+/* ── Empty state ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: #3d4570;
+}
+.empty-state .icon { font-size: 48px; opacity: 0.5; }
+.empty-state h2 { font-size: 18px; color: #5a6080; }
+.empty-state p { font-size: 13px; }
+
+/* ── Drag ghost ── */
+.drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.8;
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  display: none;
+}
+
+/* ── Booking View ── */
+.booking-view {
+  display: none;
+  flex: 1;
+  overflow: hidden;
+  flex-direction: row;
+}
+.booking-view.active { display: flex; }
+
+/* Sidebar */
+.booking-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #13162a;
+  border-right: 1px solid #1e2240;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-top {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid #1e2240;
+  flex-shrink: 0;
+}
+.sidebar-top h3 { font-size: 12px; font-weight: 700; color: #5a6080; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+.btn-add-event {
+  width: 100%;
+  padding: 8px;
+  background: #7c6af7;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-add-event:hover { background: #6b59e6; }
+
+.pending-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pending-list::-webkit-scrollbar { width: 3px; }
+.pending-list::-webkit-scrollbar-thumb { background: #2a2f50; border-radius: 2px; }
+
+.pending-card {
+  background: #0d0f18;
+  border: 1.5px solid #1e2240;
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: grab;
+  transition: all 0.15s;
+  user-select: none;
+  position: relative;
+}
+.pending-card:hover { border-color: #3a3f6e; transform: translateX(2px); }
+.pending-card:active { cursor: grabbing; }
+.pending-card.dragging { opacity: 0.4; }
+.pc-name { font-size: 12px; font-weight: 700; color: #c9cde0; margin-bottom: 4px; }
+.pc-club { font-size: 11px; color: #7c6af7; margin-bottom: 6px; }
+.pc-meta { display: flex; gap: 6px; }
+.pc-tag {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #1e2240;
+  color: #6870a0;
+  font-weight: 600;
+}
+.pc-tag.dur { background: #1a1535; color: #7c6af7; }
+.pc-delete {
+  position: absolute;
+  top: 6px; right: 8px;
+  background: none; border: none;
+  color: #3d4570; cursor: pointer;
+  font-size: 14px; line-height: 1;
+}
+.pc-delete:hover { color: #f87171; }
+
+/* Grid */
+.booking-grid-wrapper {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+.booking-grid {
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.bk-time-col { width: 56px; }
+.bk-room-col { width: 110px; min-width: 110px; }
+
+.bk-corner {
+  position: sticky; top: 0; left: 0;
+  z-index: 30;
+  background: #10121f;
+  border-bottom: 1px solid #1e2240;
+  border-right: 1px solid #1e2240;
+  padding: 8px 6px;
+  font-size: 10px; color: #3d4570; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.bk-room-header {
+  position: sticky; top: 0;
+  z-index: 20;
+  background: #10121f;
+  border-bottom: 1px solid #1e2240;
+  border-right: 1px solid #1e2240;
+  padding: 6px 4px;
+  text-align: center;
+}
+.bk-room-header-num { font-size: 13px; font-weight: 800; color: #c9cde0; }
+.bk-room-header-sub { font-size: 9px; color: #3d4570; margin-top: 1px; }
+
+.bk-time-label {
+  position: sticky; left: 0;
+  z-index: 10;
+  background: #10121f;
+  border-right: 1px solid #1e2240;
+  font-size: 10px; color: #3d4570;
+  font-weight: 600; text-align: right;
+  padding: 0 6px; white-space: nowrap;
+  vertical-align: top; padding-top: 4px;
+}
+.bk-time-label.hour { color: #5a6080; font-size: 11px; }
+
+.bk-cell {
+  border-right: 1px solid #0f1220;
+  border-bottom: 1px solid #0f1220;
+  height: 28px;
+  background: #0d0f18;
+  position: relative;
+  transition: background 0.1s;
+  vertical-align: top;
+}
+.bk-cell.hour-start { border-top: 1px solid #151829; }
+.bk-cell.drag-over { background: #1a1535 !important; outline: 2px dashed #7c6af7; outline-offset: -2px; z-index: 5; }
+.bk-cell.no-drop { background: #1a0505 !important; }
+
+/* Placed event blocks in booking grid */
+.bk-event {
+  position: absolute;
+  left: 2px; right: 2px;
+  top: 1px;
+  border-radius: 5px;
+  padding: 3px 6px;
+  z-index: 8;
+  cursor: grab;
+  overflow: hidden;
+  pointer-events: auto;
+}
+.bk-event:active { cursor: grabbing; }
+.bk-event-name { font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-event-club { font-size: 9px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-event.conflict-ev { border: 1.5px solid #f87171 !important; }
+
+/* Add event modal */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 600;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+  background: #13162a;
+  border: 1px solid #2a2f50;
+  border-radius: 14px;
+  padding: 24px;
+  width: 340px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+}
+.modal-title { font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 18px; }
+.form-group { margin-bottom: 14px; }
+.form-label { font-size: 11px; font-weight: 700; color: #5a6080; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 5px; display: block; }
+.form-input {
+  width: 100%;
+  background: #0d0f18;
+  border: 1px solid #1e2240;
+  border-radius: 8px;
+  color: #c9cde0;
+  font-size: 13px;
+  padding: 8px 12px;
+}
+.form-input:focus { outline: none; border-color: #7c6af7; }
+.form-row { display: flex; gap: 10px; }
+.form-row .form-group { flex: 1; }
+.modal-actions { display: flex; gap: 8px; margin-top: 20px; }
+.modal-actions .btn { flex: 1; padding: 9px; font-size: 13px; border-radius: 8px; }
+
+/* ── NAB Map View ── */
+.map-view {
+  display: none;
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+  background: #0d0f18;
+}
+.map-view.active { display: flex; flex-direction: column; align-items: center; gap: 24px; }
+
+.map-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #3d4570;
+  align-self: flex-start;
+}
+
+.nab-building {
+  background: #13162a;
+  border: 2px solid #2a2f50;
+  border-radius: 16px;
+  padding: 20px;
+  width: 100%;
+  max-width: 900px;
+}
+
+.nab-wing-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #3d4570;
+  margin-bottom: 10px;
+}
+
+.nab-wing {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.nab-cluster {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.nab-divider {
+  width: 1px;
+  height: 100px;
+  background: #1e2240;
+  flex-shrink: 0;
+}
+
+.nab-corridor {
+  flex: 1;
+  height: 32px;
+  background: #0d0f18;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #2a2f50;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border: 1px dashed #1e2240;
+  min-width: 60px;
+}
+
+.nab-garden {
+  width: 100%;
+  height: 36px;
+  margin: 14px 0;
+  background: linear-gradient(90deg, #071a0e, #0d2a15, #071a0e);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #14532d;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-weight: 700;
+  border: 1px solid #0f3320;
+}
+
+/* Room box in map */
+.map-room {
+  width: 80px;
+  height: 64px;
+  border-radius: 8px;
+  border: 1.5px solid #1e2240;
+  background: #0d0f18;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  gap: 4px;
+}
+.map-room:hover { transform: translateY(-2px); z-index: 10; }
+.map-room.free { border-color: #14532d; background: #071a0e; }
+.map-room.busy-low { border-color: #1a4530; background: #071a0e; }
+.map-room.busy-mid { border-color: #78350f; background: #1a0e03; }
+.map-room.busy-high { border-color: #7f1d1d; background: #1a0505; }
+.map-room.conflict-room { border-color: #f87171; background: #1a0505;
+  box-shadow: 0 0 8px rgba(248,113,113,0.2); }
+
+.map-room-number {
+  font-size: 13px;
+  font-weight: 800;
+  color: #c9cde0;
+  letter-spacing: -0.3px;
+}
+.map-room.free .map-room-number { color: #22c55e; }
+.map-room.conflict-room .map-room-number { color: #f87171; }
+
+.map-room-dot {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 60px;
+}
+.map-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.map-room-count {
+  font-size: 9px;
+  color: #5a6080;
+  font-weight: 600;
+}
+.map-room.free .map-room-count { color: #166534; }
+
+/* Map hover tooltip */
+/* ── Map Sidebar ── */
+.map-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: #13162a;
+  border: 1px solid #1e2240;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 600px;
+}
+.map-sidebar-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #5a6080;
+  flex-shrink: 0;
+}
+.map-sidebar-hint {
+  font-size: 11px;
+  color: #3d4570;
+  flex-shrink: 0;
+}
+.map-pending-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.map-pending-list::-webkit-scrollbar { width: 3px; }
+.map-pending-list::-webkit-scrollbar-thumb { background: #2a2f50; border-radius: 2px; }
+
+.map-pcard {
+  padding: 9px 10px;
+  background: #0d0f18;
+  border: 1.5px solid #1e2240;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+.map-pcard:hover { border-color: #3a3f6e; }
+.map-pcard.selected { border-color: #7c6af7; background: #110e2a; box-shadow: 0 0 0 2px rgba(124,106,247,0.2); }
+.map-pcard-name { font-size: 11px; font-weight: 700; color: #c9cde0; margin-bottom: 3px; }
+.map-pcard-club { font-size: 10px; color: #7c6af7; margin-bottom: 5px; }
+.map-pcard-dur { font-size: 10px; color: #5a6080; }
+
+/* Room states when event selected */
+.map-room.available    { border-color: #16a34a; background: #052e0f; box-shadow: 0 0 8px rgba(22,163,74,0.25); cursor: pointer; }
+.map-room.unavailable  { border-color: #3d1a1a; background: #110808; opacity: 0.5; cursor: not-allowed; }
+.map-room.available .map-room-number { color: #4ade80; }
+.map-room.available:hover { transform: translateY(-3px); box-shadow: 0 0 16px rgba(22,163,74,0.4); }
+
+/* Time slot picker modal */
+.slot-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 700;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.slot-modal-overlay.open { display: flex; }
+.slot-modal {
+  background: #13162a;
+  border: 1px solid #2a2f50;
+  border-radius: 14px;
+  padding: 22px;
+  width: 320px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+}
+.slot-modal-title { font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+.slot-modal-sub { font-size: 11px; color: #5a6080; margin-bottom: 16px; }
+.slot-list { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.slot-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #071a0e;
+  border: 1px solid #14532d;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.slot-item:hover { background: #0f2a18; border-color: #16a34a; }
+.slot-time { font-size: 13px; font-weight: 700; color: #4ade80; }
+.slot-dur  { font-size: 11px; color: #5a6080; }
+.slot-book-btn {
+  font-size: 11px; font-weight: 700;
+  background: #16a34a; color: white;
+  border: none; border-radius: 5px;
+  padding: 3px 10px; cursor: pointer;
+}
+.slot-none { text-align: center; padding: 16px; color: #f87171; font-size: 12px; }
+
+.map-day-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid #1e2240;
+  background: transparent;
+  color: #5a6080;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.map-day-btn:hover { background: #1e2240; color: #c9cde0; }
+.map-day-btn.active { background: #7c6af7; color: white; border-color: #7c6af7; }
+
+.map-tooltip {
+  position: fixed;
+  background: #1e2240;
+  border: 1px solid #3a3f6e;
+  border-radius: 10px;
+  padding: 12px 14px;
+  z-index: 2000;
+  pointer-events: none;
+  width: 260px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+  display: none;
+}
+.map-tooltip.visible { display: block; }
+.map-tt-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #2a2f50;
+}
+.map-tt-room { font-size: 18px; font-weight: 800; color: #fff; }
+.map-tt-day { font-size: 11px; color: #5a6080; margin-left: auto; }
+.map-tt-event {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 5px 0;
+  border-bottom: 1px solid #151829;
+}
+.map-tt-event:last-child { border-bottom: none; }
+.map-tt-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+.map-tt-name { font-size: 12px; font-weight: 600; color: #c9cde0; }
+.map-tt-time { font-size: 10px; color: #5a6080; margin-top: 2px; }
+.map-tt-club { font-size: 10px; color: #7c6af7; }
+.map-tt-free { text-align: center; padding: 10px; color: #22c55e; font-size: 12px; font-weight: 600; }
+
+/* ── Room Detail Panel ── */
+.room-panel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 500;
+  display: none;
+  backdrop-filter: blur(2px);
+}
+.room-panel-overlay.open { display: block; }
+
+.room-panel {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 400px;
+  background: #13162a;
+  border-left: 1px solid #1e2240;
+  z-index: 501;
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.room-panel.open { transform: translateX(0); }
+
+.panel-header {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid #1e2240;
+  flex-shrink: 0;
+}
+.panel-close {
+  position: absolute;
+  top: 16px; right: 16px;
+  background: #1e2240;
+  border: none;
+  color: #8891b8;
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+}
+.panel-close:hover { background: #2a2f50; color: #fff; }
+
+.panel-room-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 8px;
+}
+.panel-room-number {
+  font-size: 26px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.5px;
+}
+.panel-room-group {
+  font-size: 12px;
+  color: #5a6080;
+  margin-top: 2px;
+}
+
+/* Capacity editor */
+.capacity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: #0d0f18;
+  border-radius: 8px;
+  border: 1px solid #1e2240;
+}
+.capacity-icon { font-size: 18px; }
+.capacity-label { font-size: 12px; color: #5a6080; flex: 1; }
+.capacity-input {
+  background: #1e2240;
+  border: 1px solid #2a2f50;
+  border-radius: 6px;
+  color: #e0e4ff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 10px;
+  width: 80px;
+  text-align: center;
+}
+.capacity-input:focus { outline: none; border-color: #7c6af7; }
+.capacity-unit { font-size: 12px; color: #5a6080; }
+
+/* Utilisation bar */
+.util-row {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: #0d0f18;
+  border-radius: 8px;
+  border: 1px solid #1e2240;
+}
+.util-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #5a6080;
+  margin-bottom: 6px;
+}
+.util-bar-track {
+  height: 6px;
+  background: #1e2240;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.util-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #7c6af7, #06b6d4);
+  transition: width 0.4s ease;
+}
+
+/* Panel body scroll */
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+.panel-body::-webkit-scrollbar { width: 4px; }
+.panel-body::-webkit-scrollbar-track { background: transparent; }
+.panel-body::-webkit-scrollbar-thumb { background: #2a2f50; border-radius: 2px; }
+
+/* Day section */
+.day-section { margin-bottom: 20px; }
+.day-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.day-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #3d4570;
+}
+.day-event-count {
+  font-size: 10px;
+  padding: 2px 7px;
+  background: #1e2240;
+  border-radius: 10px;
+  color: #6870a0;
+}
+.day-free-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  background: #0a1a0a;
+  border-radius: 10px;
+  color: #22c55e;
+  border: 1px solid #14532d;
+}
+
+/* Mini timeline */
+.mini-timeline {
+  position: relative;
+  height: 28px;
+  background: #0d0f18;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  border: 1px solid #1a1d35;
+}
+.mini-event {
+  position: absolute;
+  top: 3px;
+  height: 22px;
+  border-radius: 4px;
+  opacity: 0.9;
+}
+
+/* Event card */
+.panel-event-card {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #0d0f18;
+  border-radius: 8px;
+  border: 1px solid #1a1d35;
+  margin-bottom: 6px;
+  cursor: default;
+  transition: border-color 0.15s;
+}
+.panel-event-card:hover { border-color: #2a2f50; }
+.panel-event-card.conflict-card { border-color: #3d1a1a; background: #110d0d; }
+.event-card-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.event-card-body { flex: 1; min-width: 0; }
+.event-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c9cde0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-card-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #5a6080;
+}
+.event-card-club { color: #7c6af7; font-weight: 500; }
+.conflict-tag {
+  font-size: 10px;
+  color: #f87171;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.panel-no-events {
+  text-align: center;
+  padding: 32px 0;
+  color: #3d4570;
+  font-size: 13px;
+}
+.panel-no-events .big { font-size: 32px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>🗓</div>
+  <h1>APOGEE <span>Scheduler</span></h1>
+  <div class="header-right">
+    <div class="stat-pill" id="statEvents">0 events</div>
+    <div class="stat-pill" id="statRooms">0 rooms</div>
+    <div class="stat-pill conflict" id="statConflicts" style="display:none">⚠ 0 conflicts</div>
+    <div style="display:flex;gap:4px;background:#0d0f18;border:1px solid #1e2240;border-radius:8px;padding:3px;">
+      <button class="btn" id="btnTimeline" onclick="setView('timeline')" style="background:#7c6af7;color:white;padding:5px 14px;font-size:12px;">⏱ Timeline</button>
+      <button class="btn" id="btnMap"      onclick="setView('map')"      style="background:transparent;color:#5a6080;padding:5px 14px;font-size:12px;">🗺 NAB Map</button>
+      <button class="btn" id="btnBooking"  onclick="setView('booking')"  style="background:transparent;color:#5a6080;padding:5px 14px;font-size:12px;">📅 Booking</button>
+    </div>
+    <button class="btn btn-outline" onclick="exportExcel()">Export</button>
+    <label class="btn btn-primary" style="cursor:pointer">
+      Import Excel
+      <input type="file" accept=".xlsx,.xls" style="display:none" onchange="handleImport(event)">
+    </label>
+  </div>
+</div>
+
+<div class="day-tabs" id="dayTabs"></div>
+
+<div class="filter-bar">
+  <span>Show:</span>
+  <button class="filter-chip active" data-group="all" onclick="setFilter(this,'all')">All Rooms</button>
+  <button class="filter-chip" data-group="NAB" onclick="setFilter(this,'NAB')">NAB (6xxx)</button>
+  <button class="filter-chip" data-group="FD2-FF" onclick="setFilter(this,'FD2-FF')">FD-2 First Floor (22xx)</button>
+  <button class="filter-chip" data-group="FD2-GF" onclick="setFilter(this,'FD2-GF')">FD-2 Ground Floor (21xx)</button>
+  <button class="filter-chip" data-group="FD1" onclick="setFilter(this,'FD1')">FD-1 (5xxx)</button>
+  <button class="filter-chip" data-group="other" onclick="setFilter(this,'other')">Other Venues</button>
+</div>
+
+<!-- Booking View -->
+<div class="booking-view" id="bookingView">
+  <div class="booking-sidebar">
+    <div class="sidebar-top">
+      <h3>📋 Pending Events</h3>
+      <button class="btn-add-event" onclick="openAddModal()">+ New Event Card</button>
+    </div>
+    <div class="pending-list" id="pendingList">
+      <div style="text-align:center;padding:24px 0;color:#3d4570;font-size:12px;">
+        Add event cards here.<br>Drag them onto the grid to schedule.
+      </div>
+    </div>
+  </div>
+  <div class="booking-grid-wrapper" id="bookingGridWrapper"></div>
+</div>
+
+<!-- Add Event Modal -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal-box">
+    <div class="modal-title">New Event Card</div>
+    <div class="form-group">
+      <label class="form-label">Event Name</label>
+      <input class="form-input" id="f-name" placeholder="e.g. AI Hackathon" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Club / Society</label>
+      <input class="form-input" id="f-club" placeholder="e.g. AI Club" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Duration (hrs)</label>
+        <input class="form-input" id="f-dur" type="number" min="0.5" max="24" step="0.5" value="2" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Day</label>
+        <select class="form-input" id="f-day">
+          <option value="0">Day 0 · Apr 10</option>
+          <option value="1">Day 1 · Apr 11</option>
+          <option value="2">Day 2 · Apr 12</option>
+          <option value="3">Day 3 · Apr 13</option>
+          <option value="4">Day 4 · Apr 14</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeAddModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddModal()">Add Card</button>
+    </div>
+  </div>
+</div>
+
+<div class="map-view" id="mapView">
+  <div style="display:flex;gap:20px;width:100%;max-width:1160px;align-items:flex-start;">
+
+    <!-- Pending cards sidebar -->
+    <div class="map-sidebar">
+      <div class="map-sidebar-title">📋 Pending Events</div>
+      <div class="map-sidebar-hint" id="mapSidebarHint">Click a card to find free rooms</div>
+      <div id="mapPendingList" class="map-pending-list"></div>
+      <button class="btn-add-event" style="margin-top:auto;padding:7px" onclick="openAddModal()">+ New Event Card</button>
+    </div>
+
+    <!-- Map column -->
+    <div style="flex:1;display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="map-title" id="mapTitleText">🏛 New Academic Block — Interactive Floor Plan</div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <span style="font-size:11px;color:#3d4570;font-weight:600;margin-right:4px;">DAY</span>
+          <button class="map-day-btn active" data-day="0" onclick="setMapDay(this,0)">0 · Apr 10</button>
+          <button class="map-day-btn" data-day="1" onclick="setMapDay(this,1)">1 · Apr 11</button>
+          <button class="map-day-btn" data-day="2" onclick="setMapDay(this,2)">2 · Apr 12</button>
+          <button class="map-day-btn" data-day="3" onclick="setMapDay(this,3)">3 · Apr 13</button>
+          <button class="map-day-btn" data-day="4" onclick="setMapDay(this,4)">4 · Apr 14</button>
+        </div>
+      </div><!-- end title row -->
+      <div class="nab-building">
+
+    <!-- Upper Wing -->
+    <div class="nab-wing-label">Upper Wing</div>
+    <div class="nab-wing">
+      <div class="nab-cluster">
+        <div class="map-room" id="mr-6104" onmouseenter="showMapTip(event,'6104')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6104')"></div>
+        <div class="map-room" id="mr-6103" onmouseenter="showMapTip(event,'6103')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6103')"></div>
+        <div class="map-room" id="mr-6101" onmouseenter="showMapTip(event,'6101')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6101')"></div>
+        <div class="map-room" id="mr-6102" onmouseenter="showMapTip(event,'6102')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6102')"></div>
+      </div>
+      <div class="nab-divider"></div>
+      <div class="nab-cluster">
+        <div class="map-room" id="mr-6108" onmouseenter="showMapTip(event,'6108')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6108')"></div>
+        <div class="map-room" id="mr-6107" onmouseenter="showMapTip(event,'6107')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6107')"></div>
+        <div class="map-room" id="mr-6105" onmouseenter="showMapTip(event,'6105')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6105')"></div>
+        <div class="map-room" id="mr-6106" onmouseenter="showMapTip(event,'6106')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6106')"></div>
+      </div>
+      <div class="nab-divider"></div>
+      <div class="nab-cluster" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="map-room" style="grid-column:1;grid-row:2" id="mr-6109" onmouseenter="showMapTip(event,'6109')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6109')"></div>
+        <div class="map-room" style="grid-column:2;grid-row:2" id="mr-6110" onmouseenter="showMapTip(event,'6110')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6110')"></div>
+        <div class="map-room" style="grid-column:3;grid-row:1;grid-row-end:3;height:100%" id="mr-6111" onmouseenter="showMapTip(event,'6111')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6111')"></div>
+      </div>
+    </div>
+
+    <!-- Garden divider -->
+    <div class="nab-garden">🌿 &nbsp; Central Pathway &nbsp; 🌿</div>
+
+    <!-- Lower Wing -->
+    <div class="nab-wing-label">Lower Wing</div>
+    <div class="nab-wing">
+      <div class="nab-cluster">
+        <div class="map-room" id="mr-6151" onmouseenter="showMapTip(event,'6151')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6151')"></div>
+        <div class="map-room" id="mr-6152" onmouseenter="showMapTip(event,'6152')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6152')"></div>
+        <div class="map-room" id="mr-6154" onmouseenter="showMapTip(event,'6154')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6154')"></div>
+        <div class="map-room" id="mr-6153" onmouseenter="showMapTip(event,'6153')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6153')"></div>
+      </div>
+      <div class="nab-divider"></div>
+      <div class="nab-cluster">
+        <div class="map-room" id="mr-6155" onmouseenter="showMapTip(event,'6155')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6155')"></div>
+        <div class="map-room" id="mr-6156" onmouseenter="showMapTip(event,'6156')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6156')"></div>
+        <div class="map-room" id="mr-6158" onmouseenter="showMapTip(event,'6158')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6158')"></div>
+        <div class="map-room" id="mr-6157" onmouseenter="showMapTip(event,'6157')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6157')"></div>
+      </div>
+      <div class="nab-divider"></div>
+      <div class="nab-cluster">
+        <div class="map-room" id="mr-6159" onmouseenter="showMapTip(event,'6159')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6159')"></div>
+        <div class="map-room" id="mr-6160" onmouseenter="showMapTip(event,'6160')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6160')"></div>
+        <div class="map-room" id="mr-6162" onmouseenter="showMapTip(event,'6162')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6162')"></div>
+        <div class="map-room" id="mr-6161" onmouseenter="showMapTip(event,'6161')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6161')"></div>
+      </div>
+      <div class="nab-divider"></div>
+      <div class="nab-cluster">
+        <div class="map-room" id="mr-6163" onmouseenter="showMapTip(event,'6163')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6163')"></div>
+        <div class="map-room" id="mr-6164" onmouseenter="showMapTip(event,'6164')" onmouseleave="hideMapTip()" onclick="openRoomPanel('6164')"></div>
+      </div>
+    </div>
+
+      </div><!-- end nab-building -->
+    </div><!-- end map column -->
+  </div><!-- end outer flex -->
+</div><!-- end map-view -->
+
+<!-- Slot picker modal -->
+<div class="slot-modal-overlay" id="slotModal">
+  <div class="slot-modal">
+    <div class="slot-modal-title" id="slotModalTitle"></div>
+    <div class="slot-modal-sub" id="slotModalSub"></div>
+    <div class="slot-list" id="slotList"></div>
+    <button class="btn btn-outline" style="width:100%;margin-top:12px;font-size:12px" onclick="closeSlotModal()">Cancel</button>
+  </div>
+</div>
+
+<div class="map-tooltip" id="mapTooltip"></div>
+
+<div class="grid-wrapper" id="gridWrapper">
+  <div class="empty-state" id="emptyState">
+    <div class="icon">📋</div>
+    <h2>Import your Excel schedule</h2>
+    <p>Click "Import Excel" to load the APOGEE Daily Schedule</p>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+<div class="drag-ghost" id="dragGhost"></div>
+
+<!-- Room Detail Panel -->
+<div class="room-panel-overlay" id="panelOverlay" onclick="closeRoomPanel()"></div>
+<div class="room-panel" id="roomPanel">
+  <div class="panel-header">
+    <button class="panel-close" onclick="closeRoomPanel()">✕</button>
+    <div class="panel-room-badge" id="panelBadge"></div>
+    <div class="panel-room-number" id="panelRoomNumber"></div>
+    <div class="panel-room-group" id="panelRoomGroup"></div>
+    <div class="capacity-row">
+      <span class="capacity-icon">👥</span>
+      <span class="capacity-label">Room Capacity</span>
+      <input class="capacity-input" id="capacityInput" type="number" min="0" max="999" placeholder="—"
+             oninput="saveCapacity()" onchange="saveCapacity()">
+      <span class="capacity-unit">seats</span>
+    </div>
+    <div class="util-row" id="utilRow">
+      <div class="util-label-row">
+        <span>Daily utilisation (hrs booked / 24h)</span>
+        <span id="utilPct">—</span>
+      </div>
+      <div class="util-bar-track"><div class="util-bar-fill" id="utilBar" style="width:0%"></div></div>
+    </div>
+  </div>
+  <div class="panel-body" id="panelBody"></div>
+</div>
+
+<script>
+// ── Pre-loaded schedule data ──
+const RAW_DATA = {"0":[{"id":"d0-0","name":"APOGEE Inaugration","club":"","room":"Main Audi","roomRaw":"Main Audi","startMin":1110,"endMin":1380},{"id":"d0-1","name":"NIGHTS WATCH","club":"Astro Club","room":"FD-3 Terrace","roomRaw":"FD-3 Terrace","startMin":1380,"endMin":360},{"id":"d0-2","name":"Murder Mystery","club":"Bio Assoc","room":"FD2 QT","roomRaw":"FD2 QT","startMin":1410,"endMin":300},{"id":"d0-3","name":"Food Challenge","club":"Nirmaan","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":1380,"endMin":1439},{"id":"d0-4","name":"Women Empowerment Challenge","club":"Nirmaan","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":1380,"endMin":1439},{"id":"d0-5","name":"Rotunda Rave","club":"","room":"Rotunda","roomRaw":"Rotunda","startMin":1380,"endMin":1439}],"1":[{"id":"d1-0","name":"ROTUNDA RAVE","club":"","room":"Rotunda","roomRaw":"Rotunda","startMin":0,"endMin":60},{"id":"d1-1","name":"Inaug Party","club":"Radioaktiv","room":"SAC Hall","roomRaw":"SAC hall","startMin":0,"endMin":300},{"id":"d1-2","name":"Brain of BITS","club":"ELAS","room":"Main Audi","roomRaw":"Main Audi","startMin":0,"endMin":480},{"id":"d1-3","name":"Anime Movie Screening","club":"TEO","room":"6109","roomRaw":"6109","startMin":0,"endMin":210},{"id":"d1-4","name":"Grafitti Room","club":"CRAC","room":"2203","roomRaw":"2203","startMin":0,"endMin":120},{"id":"d1-5","name":"The Art Lab","club":"CRAC","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":0,"endMin":150},{"id":"d1-6","name":"Stall","club":"Cubing Club","room":"VK Lawns","roomRaw":"VK Lawns","startMin":0,"endMin":1439},{"id":"d1-7","name":"Opening Ceremony Youth Parliament","club":"MunSoc","room":"NAB Audi","roomRaw":"NAB Audi","startMin":480,"endMin":510},{"id":"d1-8","name":"Youth Parliament","club":"MunSoc","room":"6107","roomRaw":"6107","startMin":540,"endMin":1080},{"id":"d1-9","name":"Youth Parliament","club":"MunSoc","room":"6152","roomRaw":"6152","startMin":540,"endMin":1080},{"id":"d1-10","name":"Youth Parliament","club":"MunSoc","room":"6157","roomRaw":"6157","startMin":540,"endMin":1080},{"id":"d1-11","name":"Youth Parliament","club":"MunSoc","room":"6159","roomRaw":"6159","startMin":540,"endMin":1080},{"id":"d1-12","name":"Proving the Obvious","club":"Maths Assoc","room":"6163","roomRaw":"6163","startMin":540,"endMin":750},{"id":"d1-13","name":"Youth Parliament","club":"MunSoc","room":"5105","roomRaw":"5105","startMin":540,"endMin":1080},{"id":"d1-14","name":"MapMyIndia Technical Hackathon","club":"Embryo","room":"6151","roomRaw":"6151","startMin":570,"endMin":1140},{"id":"d1-15","name":"Aarohan","club":"DExA","room":"5106","roomRaw":"5106","startMin":570,"endMin":1080},{"id":"d1-16","name":"Case Hackathon","club":"BPCC","room":"6105","roomRaw":"6105","startMin":600,"endMin":1439},{"id":"d1-17","name":"QUANTACULUS","club":"SAC","room":"6109","roomRaw":"6109","startMin":600,"endMin":1140},{"id":"d1-18","name":"Hackathon","club":"Sponz","room":"6154","roomRaw":"6154","startMin":600,"endMin":1439},{"id":"d1-19","name":"SVADC","club":"EEE ASSOC","room":"6155","roomRaw":"6155","startMin":600,"endMin":720},{"id":"d1-20","name":"Green Tag","club":"Enactus","room":"6164","roomRaw":"6164","startMin":600,"endMin":900},{"id":"d1-21","name":"Sky High","club":"RC Club","room":"1201","roomRaw":"1201","startMin":600,"endMin":1050},{"id":"d1-22","name":"BOKEH","club":"PHOTOG","room":"2204","roomRaw":"2204","startMin":600,"endMin":1140},{"id":"d1-23","name":"Sky High","club":"RC Club","room":"Gym Grounds","roomRaw":"Gym Grounds","startMin":600,"endMin":1050},{"id":"d1-24","name":"Scentopia","club":"Chem Assoc","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":600,"endMin":1439},{"id":"d1-25","name":"Manga Cosplay Cafe","club":"TEO","room":"VK Lawns","roomRaw":"VK Lawns","startMin":600,"endMin":1439},{"id":"d1-26","name":"Movie Screening","club":"FMaC","room":"NAB Audi","roomRaw":"NAB Audi","startMin":630,"endMin":810},{"id":"d1-27","name":"Line Follower Challenge","club":"IEEE","room":"2201","roomRaw":"2201","startMin":630,"endMin":840},{"id":"d1-28","name":"Pluss Technologies Hackathon","club":"Sponz","room":"6101","roomRaw":"6101","startMin":660,"endMin":1439},{"id":"d1-29","name":"ROOM OF WONDER","club":"PHY ASSOC","room":"6158","roomRaw":"6158","startMin":660,"endMin":1140},{"id":"d1-30","name":"Moneyball","club":"Operations Club","room":"5101","roomRaw":"5101","startMin":660,"endMin":900},{"id":"d1-31","name":"NoDevBuild Ideathon","club":"PIEDS","room":"6156","roomRaw":"6156","startMin":660,"endMin":840},{"id":"d1-32","name":"Prototype presentation","club":"Controls","room":"6156","roomRaw":"6156","startMin":900,"endMin":1020},{"id":"d1-33","name":"Vedic Bookstall","club":"SOVESA","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":720,"endMin":1439},{"id":"d1-34","name":"Book Stall","club":"Matrix","room":"VK Lawns","roomRaw":"VK Lawns","startMin":720,"endMin":1350},{"id":"d1-35","name":"Mystery Box","club":"AHP","room":"6108","roomRaw":"6108","startMin":810,"endMin":1200},{"id":"d1-36","name":"Founder Panel","club":"PIEDS","room":"NAB Audi","roomRaw":"NAB Audi","startMin":840,"endMin":930},{"id":"d1-37","name":"Claw&Shield - AI Hackathon","club":"AI Club","room":"6103","roomRaw":"6103","startMin":840,"endMin":1080},{"id":"d1-38","name":"Claw&Shield - AI Hackathon","club":"AI Club","room":"6104","roomRaw":"6104","startMin":840,"endMin":1080},{"id":"d1-39","name":"Gambling Math Round 2","club":"Math Assoc","room":"6155","roomRaw":"6155","startMin":840,"endMin":1140},{"id":"d1-40","name":"Bridge Blitz","club":"Civil Assoc","room":"6162","roomRaw":"6162","startMin":840,"endMin":1140},{"id":"d1-41","name":"Anime Quiz","club":"TEO","room":"6163","roomRaw":"6163","startMin":840,"endMin":1140},{"id":"d1-42","name":"Real Politik","club":"Public Policy Club","room":"5102","roomRaw":"5102","startMin":840,"endMin":1200},{"id":"d1-43","name":"Lab Lockdown","club":"IIChE BITS Pilani","room":"1233","roomRaw":"1233","startMin":840,"endMin":1080},{"id":"d1-44","name":"ROBO POP BRAWL","club":"BITS ROBOTICS SOCIETY","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1230},{"id":"d1-45","name":"Indie Game Stall","club":"Coding Club","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1439},{"id":"d1-46","name":"Pride Stall","club":"Anchor","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1439},{"id":"d1-47","name":"Scrub Workshop","club":"BITS Pharma Society","room":"6161","roomRaw":"6161","startMin":1020,"endMin":1200},{"id":"d1-48","name":"Photobooth","club":"Photog","room":"2204","roomRaw":"2204","startMin":900,"endMin":1200},{"id":"d1-49","name":"Slime Making Workshop","club":"AiCHe","room":"VK Lawns","roomRaw":"VK Lawns","startMin":900,"endMin":1320},{"id":"d1-50","name":"PPS and Electric Buzz Wire","club":"PARC","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":900,"endMin":1260},{"id":"d1-51","name":"Kart Expo","club":"IKRG","room":"VK Lawns","roomRaw":"VK Lawns","startMin":900,"endMin":1170},{"id":"d1-52","name":"Startup Expo","club":"PIEDS","room":"VK Lawns","roomRaw":"VK Lawns","startMin":900,"endMin":1080},{"id":"d1-53","name":"Jugaad Jumanji","club":"Bio Assoc","room":"Rotunda (Ram Side)","roomRaw":"Rotunda(Ram Side)","startMin":930,"endMin":1200},{"id":"d1-54","name":"FX-MRDR","club":"Music Club","room":"6102","roomRaw":"6102","startMin":960,"endMin":1050},{"id":"d1-55","name":"MindKraft","club":"HAS","room":"6153","roomRaw":"6153","startMin":960,"endMin":1140},{"id":"d1-56","name":"3D Printing Workshop","club":"CRISS","room":"6156","roomRaw":"6156","startMin":1020,"endMin":1200},{"id":"d1-57","name":"Astro Night (42)","club":"Astro Club","room":"6164","roomRaw":"6164","startMin":960,"endMin":1260},{"id":"d1-58","name":"FOOD CHALLENGE","club":"NIRMAAN","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":960,"endMin":1439},{"id":"d1-59","name":"Grafitti Room","club":"CRAC","room":"2203","roomRaw":"2203","startMin":960,"endMin":1200},{"id":"d1-60","name":"PR Rao Talk","club":"PEP","room":"NAB Audi","roomRaw":"NAB Audi","startMin":1020,"endMin":1080},{"id":"d1-61","name":"Moot Court","club":"Informalz","room":"6160","roomRaw":"6160","startMin":1050,"endMin":1260},{"id":"d1-62","name":"Jeopardy Prelims","club":"AICHE","room":"5105","roomRaw":"5105","startMin":1080,"endMin":1230},{"id":"d1-63","name":"Sufi Nite","club":"","room":"Rotunda","roomRaw":"Rotunda","startMin":1080,"endMin":1260},{"id":"d1-64","name":"23 ventures hackathon","club":"PIEDS","room":"NAB Audi","roomRaw":"NAB Audi","startMin":1140,"endMin":1290},{"id":"d1-65","name":"Darzi","club":"","room":"SAC Hall","roomRaw":"SAC Hall","startMin":1380,"endMin":60}],"2":[{"id":"d2-0","name":"Jugaad Jumanji","club":"Bio Assoc","room":"Rotunda (Ram Side)","roomRaw":"Rotunda (Ram Side)","startMin":0,"endMin":120},{"id":"d2-1","name":"Movie Screening","club":"Matrix","room":"NAB Audi","roomRaw":"NAB Audi","startMin":0,"endMin":300},{"id":"d2-2","name":"Sci-Tech Quiz","club":"ELAS","room":"6109","roomRaw":"6109","startMin":0,"endMin":360},{"id":"d2-3","name":"Whodunnit","club":"ChemistryAssoc","room":"1234","roomRaw":"1234","startMin":0,"endMin":180},{"id":"d2-4","name":"Scavenger Hunt","club":"Communo","room":"FD2 QT","roomRaw":"FD2 QT","startMin":0,"endMin":120},{"id":"d2-5","name":"Case Hackathon","club":"BPCC","room":"6105","roomRaw":"6105","startMin":0,"endMin":1020},{"id":"d2-6","name":"Graffiti Room","club":"CRAC","room":"2203","roomRaw":"2203","startMin":0,"endMin":150},{"id":"d2-7","name":"Youth Parliament","club":"MunSoc","room":"6103","roomRaw":"6103","startMin":540,"endMin":1080},{"id":"d2-8","name":"Youth Parliament","club":"MunSoc","room":"6104","roomRaw":"6104","startMin":540,"endMin":1080},{"id":"d2-9","name":"Youth Parliament","club":"MunSoc","room":"6153","roomRaw":"6153","startMin":540,"endMin":1080},{"id":"d2-10","name":"Youth Parliament","club":"MunSoc","room":"6163","roomRaw":"6163","startMin":540,"endMin":1080},{"id":"d2-11","name":"Youth Parliament","club":"MunSoc","room":"6164","roomRaw":"6164","startMin":540,"endMin":1080},{"id":"d2-12","name":"Aarohan","club":"DExA","room":"6117","roomRaw":"6117 - IPC","startMin":540,"endMin":720},{"id":"d2-13","name":"Aarohan","club":"DExA","room":"6118","roomRaw":"6118 - IPC","startMin":540,"endMin":720},{"id":"d2-14","name":"Sky High","club":"RC Club","room":"1201","roomRaw":"1201","startMin":540,"endMin":1050},{"id":"d2-15","name":"Dexter's Laboratory","club":"Biological Assoc","room":"Bio Lab (FD3)","roomRaw":"Bio Lab (FD3)","startMin":540,"endMin":1080},{"id":"d2-16","name":"MapMyIndia Business Hackathon","club":"Enactus","room":"6151","roomRaw":"6151","startMin":570,"endMin":1140},{"id":"d2-17","name":"AI Hackathon EightFold AI","club":"AI Club","room":"5102","roomRaw":"5102","startMin":570,"endMin":1260},{"id":"d2-18","name":"Aarohan","club":"DExA","room":"5106","roomRaw":"5106","startMin":570,"endMin":1080},{"id":"d2-19","name":"Impact-X","club":"NSS","room":"6107","roomRaw":"6107","startMin":600,"endMin":840},{"id":"d2-20","name":"BOKEH","club":"PHOTOG","room":"2204","roomRaw":"2204","startMin":600,"endMin":1140},{"id":"d2-21","name":"POETRY SLAM","club":"POETRY CLUB","room":"NAB Audi","roomRaw":"NAB Audi","startMin":660,"endMin":810},{"id":"d2-22","name":"AI Poker","club":"IEEE BPSC","room":"6156","roomRaw":"6156","startMin":660,"endMin":960},{"id":"d2-23","name":"Investoquest Round 3","club":"EFA","room":"6157","roomRaw":"6157","startMin":660,"endMin":960},{"id":"d2-24","name":"ROOM OF WONDER","club":"PHY ASSOC","room":"6158","roomRaw":"6158","startMin":660,"endMin":1140},{"id":"d2-25","name":"Micromouse Challenge","club":"IEEE BPSC","room":"2201","roomRaw":"2201","startMin":690,"endMin":900},{"id":"d2-26","name":"MoneyBall","club":"Operations Club","room":"5101","roomRaw":"5101","startMin":720,"endMin":900},{"id":"d2-27","name":"23Ventures Hackathon","club":"PIEDS","room":"RKIC","roomRaw":"RKIC","startMin":720,"endMin":1439},{"id":"d2-28","name":"Risk Royal","club":"TEO","room":"SAC Hall","roomRaw":"SAC Hall","startMin":720,"endMin":1200},{"id":"d2-29","name":"Vedic Bookstall","club":"SOVESA","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":720,"endMin":1439},{"id":"d2-30","name":"Book Stall","club":"Matrix","room":"VK Lawns","roomRaw":"VK Lawns","startMin":720,"endMin":1350},{"id":"d2-31","name":"Chem-e-Trade","club":"Chem Assoc","room":"6101","roomRaw":"6101","startMin":780,"endMin":1200},{"id":"d2-32","name":"Atlassian Career Cafe","club":"Sponz","room":"6159","roomRaw":"6159, 6160, 6161","startMin":780,"endMin":960},{"id":"d2-33","name":"Volunesia","club":"NSS","room":"6102","roomRaw":"6102","startMin":840,"endMin":1140},{"id":"d2-34","name":"Riot Story Final Round","club":"AHP","room":"6108","roomRaw":"6108","startMin":840,"endMin":1080},{"id":"d2-35","name":"Seconds To Survive","club":"AEP","room":"6155","roomRaw":"6155","startMin":840,"endMin":1080},{"id":"d2-36","name":"CAD-A-THON","club":"Mech Assoc","room":"6162","roomRaw":"6162","startMin":960,"endMin":1200},{"id":"d2-37","name":"Pluss Tech","club":"Mech Assoc","room":"6162","roomRaw":"6162","startMin":720,"endMin":960},{"id":"d2-38","name":"Code Duels","club":"Coding Club","room":"6114","roomRaw":"6114 - IPC","startMin":840,"endMin":1080},{"id":"d2-39","name":"ChemRxn","club":"ACS","room":"5105","roomRaw":"5105","startMin":840,"endMin":1080},{"id":"d2-40","name":"Lab Lockdown","club":"IIChE BITS Pilani","room":"1233","roomRaw":"1233","startMin":840,"endMin":1080},{"id":"d2-41","name":"ROBO POP BRAWL","club":"BITS ROBOTICS SOCIETY","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1200},{"id":"d2-42","name":"Indie Game Stall","club":"Coding Club","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1380},{"id":"d2-43","name":"Pride Stall","club":"Anchor","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1439},{"id":"d2-44","name":"Jugaad Jumanji","club":"Bio Assoc","room":"Rotunda (Ram Side)","roomRaw":"Rotunda(Ram Side)","startMin":900,"endMin":1200},{"id":"d2-45","name":"MindWars","club":"Math Assoc","room":"6109","roomRaw":"6109","startMin":900,"endMin":1170},{"id":"d2-46","name":"Pokemon Showdown","club":"Gaming Club","room":"6160","roomRaw":"6160","startMin":900,"endMin":1200},{"id":"d2-47","name":"Scrub Workshop","club":"BITS Pharma Society","room":"6161","roomRaw":"6161","startMin":1020,"endMin":1200},{"id":"d2-48","name":"Chem Poker","club":"IICHE","room":"1223","roomRaw":"1223","startMin":900,"endMin":1200},{"id":"d2-49","name":"Photobooth","club":"Photog","room":"2204","roomRaw":"2204","startMin":900,"endMin":1200},{"id":"d2-50","name":"Polybius","club":"Backstage","room":"BackStage QT","roomRaw":"BackStage QT","startMin":900,"endMin":1080},{"id":"d2-51","name":"PPS and Electric Buzz Wire","club":"PARC","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":900,"endMin":1260},{"id":"d2-52","name":"Kart Expo","club":"IKRG","room":"VK Lawns","roomRaw":"VK Lawns","startMin":900,"endMin":1200},{"id":"d2-53","name":"HOW TO QUANT","club":"Quant Club","room":"NAB Audi","roomRaw":"NAB Audi","startMin":900,"endMin":990},{"id":"d2-54","name":"VC Panel","club":"PIEDS","room":"5101","roomRaw":"5101","startMin":930,"endMin":1050},{"id":"d2-55","name":"Splash","club":"CRAC","room":"Rotunda (Krishna Side)","roomRaw":"Rotunda(Krishna Side)","startMin":960,"endMin":1200},{"id":"d2-56","name":"Pun Wars","club":"Mime Club","room":"6107","roomRaw":"6107","startMin":960,"endMin":1080},{"id":"d2-57","name":"Jeopardy Semi Finals","club":"AICHE","room":"6154","roomRaw":"6154","startMin":960,"endMin":1200},{"id":"d2-58","name":"Probability Labyrinth Day 1","club":"Mathematics Assoc","room":"6156","roomRaw":"6156","startMin":960,"endMin":1140},{"id":"d2-59","name":"Politpoly","club":"Public Policy Club","room":"2201","roomRaw":"2201","startMin":960,"endMin":1140},{"id":"d2-60","name":"FOOD CHALLENGE","club":"NIRMAAN","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":960,"endMin":1439},{"id":"d2-61","name":"Grafitti Room","club":"CRAC","room":"2203","roomRaw":"2203","startMin":960,"endMin":1200},{"id":"d2-62","name":"Slime Making Workshop","club":"AiCHe","room":"VK Lawns","roomRaw":"VK Lawns","startMin":960,"endMin":1320},{"id":"d2-63","name":"Closing Ceremony YP","club":"MunSoc","room":"Main Audi","roomRaw":"Main Audi","startMin":1020,"endMin":1140},{"id":"d2-64","name":"Shailesh Nayak Talk","club":"PEP","room":"NAB Audi","roomRaw":"NAB Audi","startMin":1020,"endMin":1080},{"id":"d2-65","name":"Vedic Crossword","club":"SOVESA","room":"6164","roomRaw":"6164","startMin":1020,"endMin":1080},{"id":"d2-66","name":"Judge Me If You Can","club":"COMHUB","room":"NAB Audi","roomRaw":"NAB Audi","startMin":1110,"endMin":1200},{"id":"d2-67","name":"Fusion Nite","club":"","room":"South Park","roomRaw":"South Park","startMin":1200,"endMin":1380},{"id":"d2-68","name":"BPCC Award Ceremony","club":"BPCC","room":"Main Audi","roomRaw":"Main Audi","startMin":1110,"endMin":1170}],"3":[{"id":"d3-0","name":"MOVIE SCREENING","club":"MATRIX","room":"NAB Audi","roomRaw":"NAB Audi","startMin":0,"endMin":300},{"id":"d3-1","name":"ROBOWARS","club":"ASME","room":"Rotunda","roomRaw":"Rotunda","startMin":0,"endMin":480},{"id":"d3-2","name":"Quizness As Usual","club":"ELAS","room":"6109","roomRaw":"6109","startMin":0,"endMin":360},{"id":"d3-3","name":"Graffiti Room","club":"CRAC","room":"2203","roomRaw":"2203","startMin":0,"endMin":150},{"id":"d3-4","name":"Boiler room","club":"Karaoke Club","room":"SAC","roomRaw":"SAC","startMin":0,"endMin":300},{"id":"d3-5","name":"SAMAADHAN","club":"NSS","room":"6161","roomRaw":"6161","startMin":480,"endMin":960},{"id":"d3-6","name":"Dexter's Laboratory","club":"Biological Assoc","room":"Bio Lab (FD3)","roomRaw":"Bio Lab (FD3)","startMin":540,"endMin":1080},{"id":"d3-7","name":"Aarohan","club":"DExA","room":"5106","roomRaw":"5106","startMin":570,"endMin":780},{"id":"d3-8","name":"Product Case Comp 3.0","club":"Product Mgmt Club","room":"NAB Audi","roomRaw":"NAB Audi","startMin":540,"endMin":780},{"id":"d3-9","name":"Esquire Game Room","club":"TEO","room":"6105","roomRaw":"6105","startMin":600,"endMin":1080},{"id":"d3-10","name":"BGMI Tournament","club":"Gaming Club","room":"6151","roomRaw":"6151","startMin":600,"endMin":1080},{"id":"d3-11","name":"SVADC","club":"EEE Assoc","room":"6116","roomRaw":"6116 - IPC","startMin":600,"endMin":780},{"id":"d3-12","name":"AI Hackathon EightFold R2","club":"AI Club","room":"5101","roomRaw":"5101","startMin":600,"endMin":930},{"id":"d3-13","name":"BOKEH","club":"PHOTOG","room":"2204","roomRaw":"2204","startMin":600,"endMin":1140},{"id":"d3-14","name":"ROOM OF WONDER","club":"PHY ASSOC","room":"6158","roomRaw":"6158","startMin":660,"endMin":1200},{"id":"d3-15","name":"BIDWISER","club":"EFA","room":"5105","roomRaw":"5105","startMin":660,"endMin":1080},{"id":"d3-16","name":"ESCAPE ROOM","club":"FMAC","room":"2201","roomRaw":"2201","startMin":720,"endMin":1080},{"id":"d3-17","name":"Vedic Bookstall","club":"SOVESA","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":720,"endMin":1439},{"id":"d3-18","name":"Book Stall","club":"Matrix","room":"VK Lawns","roomRaw":"VK Lawns","startMin":720,"endMin":1350},{"id":"d3-19","name":"Atlassian Fast Track","club":"Sponz","room":"6159","roomRaw":"6159","startMin":720,"endMin":810},{"id":"d3-20","name":"Eightfold AI Talk","club":"Sponz","room":"NAB Audi","roomRaw":"NAB Audi","startMin":780,"endMin":870},{"id":"d3-21","name":"Whodunnit R2","club":"Chem Assoc","room":"1234","roomRaw":"1234","startMin":780,"endMin":1020},{"id":"d3-22","name":"Airfoil Design Challenge","club":"MEA","room":"6107","roomRaw":"6107","startMin":840,"endMin":1080},{"id":"d3-23","name":"Claw&Shield - AI Hackathon","club":"AI Club","room":"6108","roomRaw":"6108","startMin":840,"endMin":1080},{"id":"d3-24","name":"Probability Labyrinth","club":"Maths Assoc","room":"6156","roomRaw":"6156","startMin":840,"endMin":1140},{"id":"d3-25","name":"Jeopardy Finals","club":"AICHE","room":"6162","roomRaw":"6162","startMin":840,"endMin":960},{"id":"d3-26","name":"ICL Round 2","club":"CODING CLUB","room":"6116","roomRaw":"6116 - IPC","startMin":840,"endMin":1080},{"id":"d3-27","name":"Gambling Math Round 3","club":"Math Assoc","room":"LTC QT","roomRaw":"LTC QT","startMin":840,"endMin":1140},{"id":"d3-28","name":"Lab Lockdown","club":"IIChE BITS Pilani","room":"1233","roomRaw":"1233","startMin":840,"endMin":1080},{"id":"d3-29","name":"ROBO POP BRAWL","club":"BITS ROBOTICS SOCIETY","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1200},{"id":"d3-30","name":"Indie Game Stall","club":"Coding Club","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1320},{"id":"d3-31","name":"Pride Stall","club":"Anchor","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1439},{"id":"d3-32","name":"IAF Panel","club":"PEP","room":"6109","roomRaw":"6109","startMin":840,"endMin":900},{"id":"d3-33","name":"OP Srivastava Talk","club":"PEP","room":"NAB Audi","roomRaw":"NAB Audi","startMin":900,"endMin":990},{"id":"d3-34","name":"Tower Toss","club":"Civil Engg Assoc","room":"6101","roomRaw":"6101","startMin":900,"endMin":1140},{"id":"d3-35","name":"Minecraft Bedwars","club":"Gaming Club","room":"6102","roomRaw":"6102","startMin":900,"endMin":1080},{"id":"d3-36","name":"PUZZLING QUIZ","club":"CUBING CLUB","room":"6104","roomRaw":"6104","startMin":900,"endMin":1200},{"id":"d3-37","name":"JEOPARDY","club":"BACKSTAGE","room":"6164","roomRaw":"6164","startMin":900,"endMin":1140},{"id":"d3-38","name":"Photobooth","club":"Photog","room":"2204","roomRaw":"2204","startMin":900,"endMin":1200},{"id":"d3-39","name":"Polybius","club":"Backstage","room":"BackStage QT","roomRaw":"BackStage QT","startMin":900,"endMin":1080},{"id":"d3-40","name":"PPS and Electric Buzz Wire","club":"PARC","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":900,"endMin":1260},{"id":"d3-41","name":"Kart Expo","club":"IKRG","room":"VK Lawns","roomRaw":"VK Lawns","startMin":900,"endMin":1200},{"id":"d3-42","name":"T minus 10","club":"Astro Club","room":"Grounds","roomRaw":"Grounds","startMin":930,"endMin":1080},{"id":"d3-43","name":"Improv Comedy","club":"Mime Club","room":"6103","roomRaw":"6103","startMin":960,"endMin":1080},{"id":"d3-44","name":"Dopper's Quiz","club":"BITS Pharma Society","room":"6160","roomRaw":"6160","startMin":960,"endMin":1080},{"id":"d3-45","name":"FOOD CHALLENGE","club":"NIRMAAN","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":960,"endMin":1439},{"id":"d3-46","name":"The Art Lab","club":"CRAC","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":960,"endMin":1200},{"id":"d3-47","name":"Grafitti Room","club":"CRAC","room":"2203","roomRaw":"2203","startMin":960,"endMin":1200},{"id":"d3-48","name":"Slime Making Workshop","club":"AiCHe","room":"VK Lawns","roomRaw":"VK Lawns","startMin":960,"endMin":1320},{"id":"d3-49","name":"Pankaj Vyas Talk","club":"PEP","room":"NAB Audi","roomRaw":"NAB Audi","startMin":1020,"endMin":1080},{"id":"d3-50","name":"Brainrot Quiz","club":"Informalz","room":"6109","roomRaw":"6109","startMin":1020,"endMin":1200},{"id":"d3-51","name":"F1 Quiz","club":"IKE","room":"6155","roomRaw":"6155","startMin":1080,"endMin":1140},{"id":"d3-52","name":"PRIZE DISTRIBUTION","club":"NSS","room":"6162","roomRaw":"6162","startMin":1080,"endMin":1200},{"id":"d3-53","name":"Supply Chain Challenge","club":"Manufacturing Assoc","room":"6163","roomRaw":"6163","startMin":1080,"endMin":1200},{"id":"d3-54","name":"Bollywood Nite","club":"","room":"South Park","roomRaw":"South Park","startMin":1200,"endMin":1380}],"4":[{"id":"d4-0","name":"MOVIE SCREENING","club":"MATRIX","room":"NAB Audi","roomRaw":"NAB Audi","startMin":0,"endMin":240},{"id":"d4-1","name":"ROBOWARS","club":"ASME","room":"Rotunda","roomRaw":"Rotunda","startMin":0,"endMin":480},{"id":"d4-2","name":"Casino Nite","club":"Radioaktiv Club","room":"SAC Hall","roomRaw":"SAC Hall","startMin":0,"endMin":60},{"id":"d4-3","name":"Overhead Transmission","club":"ELAS","room":"6109","roomRaw":"6109","startMin":0,"endMin":360},{"id":"d4-4","name":"Graffiti Room","club":"CRAC","room":"2203","roomRaw":"2203","startMin":0,"endMin":150},{"id":"d4-5","name":"The Art Lab","club":"CRAC","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":0,"endMin":150},{"id":"d4-6","name":"Dexter's Laboratory","club":"Biological Assoc","room":"Bio Lab (FD3)","roomRaw":"Bio Lab (FD3)","startMin":540,"endMin":1080},{"id":"d4-7","name":"SVADC","club":"EEE Assoc","room":"6116","roomRaw":"6116 - IPC","startMin":600,"endMin":780},{"id":"d4-8","name":"BOKEH","club":"PHOTOG","room":"2204","roomRaw":"2204","startMin":600,"endMin":1140},{"id":"d4-9","name":"Conspiring Minds","club":"Poetry Club","room":"6156","roomRaw":"6156","startMin":720,"endMin":1080},{"id":"d4-10","name":"ESCAPE ROOM","club":"FMAC","room":"2201","roomRaw":"2201","startMin":720,"endMin":1080},{"id":"d4-11","name":"Book Stall","club":"Matrix","room":"VK Lawns","roomRaw":"VK Lawns","startMin":720,"endMin":1320},{"id":"d4-12","name":"Decrypt","club":"Coding Club","room":"6116","roomRaw":"6116 - IPC","startMin":840,"endMin":1080},{"id":"d4-13","name":"Lab Lockdown","club":"IIChE BITS Pilani","room":"1233","roomRaw":"1233","startMin":840,"endMin":1080},{"id":"d4-14","name":"ROBO POP BRAWL","club":"BITS ROBOTICS SOCIETY","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1200},{"id":"d4-15","name":"Indie Game Stall","club":"Coding Club","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1320},{"id":"d4-16","name":"Pride Stall","club":"Anchor","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":840,"endMin":1439},{"id":"d4-17","name":"CBC X SPONZ hackathon","club":"CBC","room":"6152","roomRaw":"6152","startMin":840,"endMin":1140},{"id":"d4-18","name":"Brawlhalla Tournament","club":"Gaming Club","room":"6151","roomRaw":"6151","startMin":900,"endMin":1110},{"id":"d4-19","name":"Polybius","club":"Backstage","room":"BackStage QT","roomRaw":"BackStage QT","startMin":900,"endMin":1080},{"id":"d4-20","name":"PPS and Electric Buzz Wire","club":"PARC","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":900,"endMin":1200},{"id":"d4-21","name":"FOOD CHALLENGE","club":"NIRMAAN","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":960,"endMin":1439},{"id":"d4-22","name":"WOMEN EMPOWERMENT","club":"NIRMAAN","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":960,"endMin":1439},{"id":"d4-23","name":"GAME STALL","club":"NIRMAAN","room":"Krishna Parking","roomRaw":"Krishna Parking","startMin":960,"endMin":1439},{"id":"d4-24","name":"Grafitti Room","club":"CRAC","room":"2203","roomRaw":"2203","startMin":960,"endMin":1200},{"id":"d4-25","name":"Speed Cubing","club":"Cubing Club","room":"6107","roomRaw":"6107","startMin":1020,"endMin":1200},{"id":"d4-26","name":"BGL","club":"HAS + Comhub","room":"NAB Audi","roomRaw":"NAB Audi","startMin":1050,"endMin":1200},{"id":"d4-27","name":"N2O","club":"","room":"Main Audi","roomRaw":"Main Audi","startMin":1200,"endMin":1320},{"id":"d4-28","name":"Afterparty","club":"DLE","room":"SAC Hall","roomRaw":"SAC Hall","startMin":1380,"endMin":120}]};
+
+// ── State ──
+let scheduleData = {}; // { dayIndex: [events] }
+let currentDay = 0;
+let allRooms = [];
+let activeFilter = 'all';
+let dragging = null;
+let dragOffset = { x: 0, y: 0 };
+
+const MINS_PER_PX = 1; // 1px = 1 minute, 60px = 1 hour
+const ROW_HEIGHT = 52;
+
+const DAY_LABELS = ['Day 0', 'Day 1', 'Day 2', 'Day 3', 'Day 4'];
+const DAY_DATES  = ['Apr 10', 'Apr 11', 'Apr 12', 'Apr 13', 'Apr 14'];
+
+// ── Color palette per club ──
+function clubColor(club) {
+  const colors = [
+    ['#7c6af7','#1a1535'],['#06b6d4','#051a20'],['#10b981','#071a12'],
+    ['#f59e0b','#1a1505'],['#ec4899','#1a0510'],['#8b5cf6','#14093a'],
+    ['#14b8a6','#061a18'],['#f97316','#1a0a03'],['#6366f1','#0d0f35'],
+    ['#84cc16','#0f1a03'],['#e879f9','#180520'],['#22d3ee','#021a20'],
+    ['#fb7185','#1a0508'],['#a78bfa','#120a35'],['#34d399','#041a10'],
+  ];
+  if (!club) return colors[0];
+  let h = 0;
+  for (let i = 0; i < club.length; i++) h = (h * 31 + club.charCodeAt(i)) % colors.length;
+  return colors[h];
+}
+
+// ── Time helpers ──
+function parseTime(val) {
+  if (!val && val !== 0) return null;
+  if (typeof val === 'number') {
+    // Excel fractional day
+    if (val < 1) return Math.round(val * 24 * 60);
+    // Already minutes? unlikely
+    return null;
+  }
+  const s = String(val).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (m) return parseInt(m[1]) * 60 + parseInt(m[2]);
+  return null;
+}
+
+function fmtTime(mins) {
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+// ── Room helpers ──
+function roomGroup(room) {
+  const r = String(room).trim();
+  const n = parseInt(r);
+  if (!isNaN(n)) {
+    if (n >= 6100 && n <= 6199) return 'NAB';
+    if (n >= 2200 && n <= 2299) return 'FD2-FF';
+    if (n >= 2100 && n <= 2199) return 'FD2-GF';
+    if (n >= 5100 && n <= 5199) return 'FD1';
+    if (n >= 1200 && n <= 1299) return 'FD3';
+  }
+  return 'other';
+}
+
+function roomLabel(room) {
+  const r = String(room).trim();
+  const n = parseInt(r);
+  if (!isNaN(n)) {
+    if (n >= 6100 && n <= 6199) return ['NAB', r];
+    if (n >= 2200 && n <= 2299) return ['FD-2 · 1st Floor', r];
+    if (n >= 2100 && n <= 2199) return ['FD-2 · GF', r];
+    if (n >= 5100 && n <= 5199) return ['FD-1', r];
+    if (n >= 1200 && n <= 1299) return ['FD-3', r];
+  }
+  return ['Venue', r];
+}
+
+const GROUP_ORDER = ['NAB','FD2-FF','FD2-GF','FD1','FD3','other'];
+const GROUP_LABELS = {
+  NAB: '🏛 New Academic Block (NAB)',
+  'FD2-FF': '🏢 FD-2 · First Floor (22xx)',
+  'FD2-GF': '🏢 FD-2 · Ground Floor (21xx)',
+  FD1: '🏢 Faculty Division 1 (5xxx)',
+  FD3: '🏢 Faculty Division 3 (1xxx)',
+  other: '📍 Other Venues',
+};
+
+// ── Parse events from sheet rows ──
+function parseEvents(rows, dayIdx) {
+  const events = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length < 4) continue;
+    let [name, club, room, start, end] = row;
+    if (!name || !room) continue;
+    name = String(name).trim();
+    room = String(room).trim();
+    club = club ? String(club).trim() : '';
+
+    // Handle rooms like "6159, 6160, 6161" → use first
+    const roomPrimary = room.split(',')[0].trim();
+    // Handle "6116 - IPC" style
+    const roomClean = roomPrimary.replace(/\s*-.*$/, '').trim();
+
+    const startMin = parseTime(start);
+    const endMin = parseTime(end);
+    if (startMin === null) continue;
+
+    events.push({
+      id: `d${dayIdx}-${i}`,
+      name,
+      club,
+      room: roomClean,
+      roomRaw: room,
+      startMin,
+      endMin: endMin !== null ? endMin : (startMin + 60),
+      dayIdx,
+      conflict: false,
+    });
+  }
+  detectConflicts(events);
+  return events;
+}
+
+function detectConflicts(events) {
+  const byRoom = {};
+  events.forEach(e => {
+    if (!byRoom[e.room]) byRoom[e.room] = [];
+    byRoom[e.room].push(e);
+  });
+  Object.values(byRoom).forEach(roomEvents => {
+    for (let i = 0; i < roomEvents.length; i++) {
+      for (let j = i + 1; j < roomEvents.length; j++) {
+        const a = roomEvents[i], b = roomEvents[j];
+        if (a.startMin < b.endMin && b.startMin < a.endMin) {
+          a.conflict = true;
+          b.conflict = true;
+        }
+      }
+    }
+  });
+}
+
+// ── Auto-init on load ──
+function initFromRawData() {
+  Object.keys(RAW_DATA).forEach(dayIdx => {
+    const events = RAW_DATA[dayIdx].map(e => ({ ...e, conflict: false }));
+    detectConflicts(events);
+    scheduleData[dayIdx] = events;
+  });
+  buildDayTabs(['Day 0','Day 1','Day 2','Day 3','Day 4']);
+  renderSchedule();
+}
+window.addEventListener('DOMContentLoaded', initFromRawData);
+
+// ── Import (override) ──
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const wb = XLSX.read(ev.target.result, { type: 'array', cellDates: false });
+    scheduleData = {};
+    wb.SheetNames.forEach((name, i) => {
+      const ws = wb.Sheets[name];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+      scheduleData[i] = parseEvents(rows, i);
+    });
+    currentDay = 0;
+    buildDayTabs(wb.SheetNames);
+    renderSchedule();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Export ──
+function exportExcel() {
+  if (!Object.keys(scheduleData).length) { alert('No data to export.'); return; }
+  const wb = XLSX.utils.book_new();
+  Object.keys(scheduleData).forEach(dayIdx => {
+    const events = scheduleData[dayIdx];
+    const rows = [['Event Name','Club Name','Room Number','Start Time','End Time']];
+    events.forEach(e => rows.push([e.name, e.club, e.room, fmtTime(e.startMin), fmtTime(e.endMin)]));
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, DAY_LABELS[dayIdx] || `Day ${dayIdx}`);
+  });
+  XLSX.writeFile(wb, 'APOGEE_Schedule_Export.xlsx');
+}
+
+// ── Day Tabs ──
+function buildDayTabs(sheetNames) {
+  const container = document.getElementById('dayTabs');
+  container.innerHTML = '';
+  sheetNames.forEach((name, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'day-tab' + (i === currentDay ? ' active' : '');
+    btn.textContent = `${name}  ${DAY_DATES[i] ? '· '+DAY_DATES[i] : ''}`;
+    btn.onclick = () => {
+      currentDay = i;
+      renderSchedule(); updateTabs();
+      if (currentView === 'map')     refreshMapRooms();
+      if (currentView === 'booking') renderBookingEvents();
+    };
+    container.appendChild(btn);
+  });
+}
+
+function updateTabs() {
+  document.querySelectorAll('.day-tab').forEach((btn, i) => {
+    btn.classList.toggle('active', i === currentDay);
+  });
+}
+
+// ── Filter ──
+function setFilter(el, group) {
+  activeFilter = group;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderSchedule();
+}
+
+// ── Render ──
+function renderSchedule() {
+  const wrapper = document.getElementById('gridWrapper');
+  const emptyState = document.getElementById('emptyState');
+  const events = scheduleData[currentDay] || [];
+
+  if (!events.length) {
+    emptyState.style.display = 'flex';
+    const existing = wrapper.querySelector('table');
+    if (existing) existing.remove();
+    updateStats([], []);
+    return;
+  }
+  emptyState.style.display = 'none';
+
+  // Collect rooms across ALL days so rooms don't disappear on quiet days
+  const roomSet = new Set();
+  Object.values(scheduleData).forEach(dayEvents => dayEvents.forEach(e => roomSet.add(e.room)));
+  allRooms = [...roomSet].sort((a, b) => {
+    const ga = GROUP_ORDER.indexOf(roomGroup(a));
+    const gb = GROUP_ORDER.indexOf(roomGroup(b));
+    if (ga !== gb) return ga - gb;
+    return a.localeCompare(b, undefined, { numeric: true });
+  });
+
+  // Filter rooms
+  const visibleRooms = activeFilter === 'all'
+    ? allRooms
+    : allRooms.filter(r => roomGroup(r) === activeFilter);
+
+  // Count conflicts
+  const conflictEvents = events.filter(e => e.conflict);
+  updateStats(events, conflictEvents);
+
+  // Build table
+  const table = document.createElement('table');
+  table.className = 'schedule-table';
+
+  // Time header
+  const thead = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  headerRow.className = 'time-header-row';
+
+  const corner = document.createElement('th');
+  corner.className = 'corner-cell room-label-col';
+  corner.textContent = 'Room';
+  headerRow.appendChild(corner);
+
+  for (let h = 0; h < 24; h++) {
+    const th = document.createElement('th');
+    th.className = 'hour-cell';
+    th.colSpan = 1;
+    th.style.width = '60px';
+    th.textContent = `${String(h).padStart(2,'0')}:00`;
+    headerRow.appendChild(th);
+  }
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  // Body
+  const tbody = document.createElement('tbody');
+  let lastGroup = null;
+
+  visibleRooms.forEach(room => {
+    const group = roomGroup(room);
+
+    // Group header row
+    if (group !== lastGroup) {
+      lastGroup = group;
+      const groupRow = document.createElement('tr');
+      groupRow.className = 'group-header-row';
+      const td = document.createElement('td');
+      td.colSpan = 25;
+      td.textContent = GROUP_LABELS[group] || group;
+      groupRow.appendChild(td);
+      tbody.appendChild(groupRow);
+    }
+
+    const [groupShort, roomId] = roomLabel(room);
+    const roomEvents = events.filter(e => e.room === room);
+
+    const tr = document.createElement('tr');
+    tr.className = 'room-row';
+    tr.dataset.room = room;
+
+    // Room label cell
+    const labelTd = document.createElement('td');
+    labelTd.className = 'room-cell';
+    labelTd.innerHTML = `
+      <div class="room-name">${roomId}</div>
+      <div class="room-id">${groupShort}</div>
+    `;
+    labelTd.style.cursor = 'pointer';
+    labelTd.title = 'Click to see room details';
+    labelTd.addEventListener('click', () => openRoomPanel(room));
+    tr.appendChild(labelTd);
+
+    // Timeline cell
+    const timelineTd = document.createElement('td');
+    timelineTd.className = 'timeline-cell';
+    timelineTd.colSpan = 24;
+    timelineTd.style.width = '1440px';
+    timelineTd.dataset.room = room;
+
+    roomEvents.forEach(ev => {
+      const block = createEventBlock(ev);
+      timelineTd.appendChild(block);
+    });
+
+    tr.appendChild(timelineTd);
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+
+  // Replace existing table
+  const existing = wrapper.querySelector('table');
+  if (existing) existing.remove();
+  wrapper.appendChild(table);
+}
+
+function createEventBlock(ev) {
+  const [fg, bg] = clubColor(ev.club);
+  const left = ev.startMin;
+  const width = Math.max(ev.endMin - ev.startMin, 15);
+
+  const block = document.createElement('div');
+  block.className = 'event-block' + (ev.conflict ? ' conflict' : '');
+  block.dataset.id = ev.id;
+  block.style.left = `${left}px`;
+  block.style.width = `${width}px`;
+  block.style.background = bg;
+  block.style.color = fg;
+
+  block.innerHTML = `
+    <div class="event-name">${ev.name}</div>
+    ${width > 60 ? `<div class="event-club">${ev.club}</div>` : ''}
+    ${ev.conflict ? '<div class="conflict-badge">!</div>' : ''}
+  `;
+
+  // Tooltip
+  block.addEventListener('mouseenter', e => showTooltip(e, ev));
+  block.addEventListener('mouseleave', hideTooltip);
+  block.addEventListener('mousemove', moveTooltip);
+
+  // Drag
+  block.addEventListener('mousedown', e => startDrag(e, ev, block));
+
+  return block;
+}
+
+// ── Tooltip ──
+function showTooltip(e, ev) {
+  const t = document.getElementById('tooltip');
+  const conflictText = ev.conflict ? '<div class="tooltip-conflict">⚠ Room conflict detected</div>' : '';
+  t.innerHTML = `
+    <div class="tooltip-title">${ev.name}</div>
+    <div class="tooltip-club">${ev.club || 'No club'}</div>
+    <div class="tooltip-row"><span>Room</span><span>${ev.roomRaw || ev.room}</span></div>
+    <div class="tooltip-row"><span>Time</span><span>${fmtTime(ev.startMin)} – ${fmtTime(ev.endMin)}</span></div>
+    <div class="tooltip-row"><span>Duration</span><span>${ev.endMin - ev.startMin} min</span></div>
+    ${conflictText}
+  `;
+  t.classList.add('visible');
+  moveTooltip(e);
+}
+function hideTooltip() {
+  document.getElementById('tooltip').classList.remove('visible');
+}
+function moveTooltip(e) {
+  const t = document.getElementById('tooltip');
+  let x = e.clientX + 16, y = e.clientY + 16;
+  if (x + 250 > window.innerWidth) x = e.clientX - 260;
+  if (y + 180 > window.innerHeight) y = e.clientY - 190;
+  t.style.left = x + 'px';
+  t.style.top = y + 'px';
+}
+
+// ── Drag & Drop ──
+function startDrag(e, ev, block) {
+  e.preventDefault();
+  hideTooltip();
+
+  const [fg, bg] = clubColor(ev.club);
+  const ghost = document.getElementById('dragGhost');
+  ghost.textContent = ev.name;
+  ghost.style.background = bg;
+  ghost.style.color = fg;
+  ghost.style.display = 'block';
+
+  dragging = { ev, block, originalRoom: ev.room, originalStart: ev.startMin };
+  dragOffset.x = e.clientX;
+  dragOffset.y = e.clientY;
+
+  block.style.opacity = '0.4';
+
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup', onDragEnd);
+}
+
+function onDragMove(e) {
+  if (!dragging) return;
+  const ghost = document.getElementById('dragGhost');
+  ghost.style.left = (e.clientX + 12) + 'px';
+  ghost.style.top = (e.clientY + 12) + 'px';
+}
+
+function onDragEnd(e) {
+  if (!dragging) return;
+
+  const ghost = document.getElementById('dragGhost');
+  ghost.style.display = 'none';
+
+  // Find drop target timeline cell
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const targetCell = el ? el.closest('.timeline-cell') : null;
+
+  if (targetCell) {
+    const targetRoom = targetCell.dataset.room;
+    const rect = targetCell.getBoundingClientRect();
+    const wrapper = document.getElementById('gridWrapper');
+    // Account for scroll
+    const scrollLeft = wrapper.scrollLeft;
+    const newStart = Math.round(e.clientX - rect.left + scrollLeft - 30);
+    const duration = dragging.ev.endMin - dragging.ev.startMin;
+    const snapped = Math.max(0, Math.round(newStart / 15) * 15);
+
+    dragging.ev.room = targetRoom;
+    dragging.ev.startMin = snapped;
+    dragging.ev.endMin = snapped + duration;
+  }
+
+  dragging.block.style.opacity = '1';
+
+  // Re-detect conflicts for current day
+  detectConflicts(scheduleData[currentDay]);
+  renderSchedule();
+
+  dragging = null;
+  document.removeEventListener('mousemove', onDragMove);
+  document.removeEventListener('mouseup', onDragEnd);
+}
+
+// ── Room capacities (persisted in memory per session) ──
+const roomCapacities = {};
+
+function openRoomPanel(room) {
+  const panel = document.getElementById('roomPanel');
+  const overlay = document.getElementById('panelOverlay');
+
+  // Badge & labels
+  const group = roomGroup(room);
+  const [groupShort] = roomLabel(room);
+  const badgeColors = {
+    NAB: ['#7c6af7','#1a1535'], 'FD2-FF': ['#06b6d4','#051a20'],
+    'FD2-GF': ['#10b981','#071a12'], FD1: ['#f59e0b','#1a1505'],
+    FD3: ['#8b5cf6','#14093a'], other: ['#6366f1','#0d0f35'],
+  };
+  const [fc, bc] = badgeColors[group] || badgeColors.other;
+  const badge = document.getElementById('panelBadge');
+  badge.textContent = groupShort;
+  badge.style.background = bc;
+  badge.style.color = fc;
+
+  document.getElementById('panelRoomNumber').textContent = room;
+  document.getElementById('panelRoomGroup').textContent = GROUP_LABELS[group] || group;
+
+  // Capacity
+  const cap = document.getElementById('capacityInput');
+  cap.value = roomCapacities[room] || '';
+  cap._room = room;
+
+  // Utilisation for current day
+  updateUtilBar(room);
+
+  // Body: events across all days
+  renderPanelBody(room);
+
+  overlay.classList.add('open');
+  panel.classList.add('open');
+}
+
+function closeRoomPanel() {
+  document.getElementById('roomPanel').classList.remove('open');
+  document.getElementById('panelOverlay').classList.remove('open');
+}
+
+function saveCapacity() {
+  const inp = document.getElementById('capacityInput');
+  if (inp._room) {
+    roomCapacities[inp._room] = parseInt(inp.value) || 0;
+    updateUtilBar(inp._room);
+  }
+}
+
+function updateUtilBar(room) {
+  const events = scheduleData[currentDay] || [];
+  const roomEvents = events.filter(e => e.room === room);
+  const bookedMins = roomEvents.reduce((sum, e) => sum + (e.endMin - e.startMin), 0);
+  const pct = Math.min(100, Math.round((bookedMins / (24 * 60)) * 100));
+  document.getElementById('utilBar').style.width = pct + '%';
+  document.getElementById('utilPct').textContent =
+    `${(bookedMins / 60).toFixed(1)}h booked (${pct}%)`;
+}
+
+function renderPanelBody(room) {
+  const body = document.getElementById('panelBody');
+  const dayKeys = Object.keys(scheduleData).sort((a, b) => a - b);
+
+  if (!dayKeys.length) {
+    body.innerHTML = `<div class="panel-no-events"><div class="big">📋</div>Import a schedule first</div>`;
+    return;
+  }
+
+  body.innerHTML = '';
+
+  dayKeys.forEach(dayIdx => {
+    const events = (scheduleData[dayIdx] || []).filter(e => e.room === room);
+    const label = DAY_LABELS[dayIdx] || `Day ${dayIdx}`;
+    const date  = DAY_DATES[dayIdx]  || '';
+    const isCurrent = parseInt(dayIdx) === currentDay;
+
+    const section = document.createElement('div');
+    section.className = 'day-section';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'day-section-header';
+    header.innerHTML = `
+      <span class="day-section-label">${label}${date ? ' · ' + date : ''}${isCurrent ? ' ●' : ''}</span>
+      ${events.length
+        ? `<span class="day-event-count">${events.length} event${events.length > 1 ? 's' : ''}</span>`
+        : `<span class="day-free-badge">✓ Free</span>`}
+    `;
+    section.appendChild(header);
+
+    // Mini timeline
+    const mini = document.createElement('div');
+    mini.className = 'mini-timeline';
+    events.forEach(ev => {
+      const [fg, bg] = clubColor(ev.club);
+      const left = (ev.startMin / (24 * 60)) * 100;
+      const width = Math.max(((ev.endMin - ev.startMin) / (24 * 60)) * 100, 1);
+      const blk = document.createElement('div');
+      blk.className = 'mini-event';
+      blk.style.left = left + '%';
+      blk.style.width = width + '%';
+      blk.style.background = ev.conflict ? '#f87171' : bg;
+      blk.title = ev.name;
+      mini.appendChild(blk);
+    });
+    section.appendChild(mini);
+
+    // Event cards
+    if (events.length === 0) {
+      // nothing extra needed
+    } else {
+      events.forEach(ev => {
+        const [fg] = clubColor(ev.club);
+        const card = document.createElement('div');
+        card.className = 'panel-event-card' + (ev.conflict ? ' conflict-card' : '');
+        card.innerHTML = `
+          <div class="event-card-dot" style="background:${ev.conflict ? '#f87171' : fg}"></div>
+          <div class="event-card-body">
+            <div class="event-card-name">${ev.name}</div>
+            <div class="event-card-meta">
+              <span class="event-card-club">${ev.club || 'No club'}</span>
+              <span>${fmtTime(ev.startMin)} – ${fmtTime(ev.endMin)}</span>
+              <span>${ev.endMin - ev.startMin} min</span>
+            </div>
+            ${ev.conflict ? '<div class="conflict-tag">⚠ Overlaps with another event</div>' : ''}
+          </div>
+        `;
+        section.appendChild(card);
+      });
+    }
+
+    body.appendChild(section);
+  });
+}
+
+// ── Booking View ──
+const BK_ROOMS = ['6101','6102','6103','6104','6105','6106','6107','6108',
+                  '6109','6151','6152','6153','6154','6155','6156','6157',
+                  '6158','6159','6160','6161','6162','6163','6164'];
+const BK_START = 0;    // 0:00
+const BK_END   = 1440; // 24:00
+const BK_STEP  = 30;   // 30-min slots
+
+let pendingEvents = [];
+let bkDragging    = null; // { type:'pending'|'placed', event, card/block }
+
+function buildBookingGrid() {
+  const wrapper = document.getElementById('bookingGridWrapper');
+  wrapper.innerHTML = '';
+
+  const table = document.createElement('table');
+  table.className = 'booking-grid';
+
+  // ── Header row ──
+  const thead = document.createElement('thead');
+  const hrow  = document.createElement('tr');
+
+  const corner = document.createElement('th');
+  corner.className = 'bk-corner bk-time-col';
+  corner.textContent = 'Time';
+  hrow.appendChild(corner);
+
+  BK_ROOMS.forEach(r => {
+    const th = document.createElement('th');
+    th.className = 'bk-room-header bk-room-col';
+    const grp = {'6101':'NAB','6102':'NAB','6103':'NAB','6104':'NAB','6105':'NAB','6106':'NAB',
+                 '6107':'NAB','6108':'NAB','6109':'NAB',
+                 '6151':'NAB','6152':'NAB','6153':'NAB','6154':'NAB','6155':'NAB','6156':'NAB',
+                 '6157':'NAB','6158':'NAB','6159':'NAB','6160':'NAB','6161':'NAB','6162':'NAB',
+                 '6163':'NAB','6164':'NAB'}[r] || '';
+    th.innerHTML = `<div class="bk-room-header-num">${r}</div><div class="bk-room-header-sub">${grp}</div>`;
+    hrow.appendChild(th);
+  });
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  // ── Body rows (30-min slots) ──
+  const tbody = document.createElement('tbody');
+  for (let t = BK_START; t < BK_END; t += BK_STEP) {
+    const tr = document.createElement('tr');
+    const isHour = t % 60 === 0;
+
+    // Time label
+    const td0 = document.createElement('td');
+    td0.className = 'bk-time-label' + (isHour ? ' hour' : '');
+    td0.textContent = isHour ? fmtTime(t) : '';
+    tr.appendChild(td0);
+
+    // Room cells
+    BK_ROOMS.forEach(r => {
+      const td = document.createElement('td');
+      td.className = 'bk-cell' + (isHour ? ' hour-start' : '');
+      td.dataset.room = r;
+      td.dataset.time = t;
+
+      // Drop target
+      td.addEventListener('dragover', onCellDragOver);
+      td.addEventListener('dragleave', onCellDragLeave);
+      td.addEventListener('drop', onCellDrop);
+
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
+
+  renderBookingEvents();
+}
+
+function renderBookingEvents() {
+  // Clear existing placed blocks
+  document.querySelectorAll('.bk-event').forEach(el => el.remove());
+  document.querySelectorAll('.bk-cell').forEach(el => {
+    el.classList.remove('occupied');
+    el.style.background = '';
+  });
+
+  const events = scheduleData[currentDay] || [];
+  events.forEach(ev => {
+    placeEventBlock(ev);
+  });
+}
+
+function placeEventBlock(ev) {
+  const startSlot = Math.floor(ev.startMin / BK_STEP) * BK_STEP;
+  const endSlot   = Math.ceil(ev.endMin   / BK_STEP) * BK_STEP;
+  const slots     = Math.max(1, (endSlot - startSlot) / BK_STEP);
+  const heightPx  = slots * 28 - 2;
+
+  // Find anchor cell
+  const anchor = document.querySelector(
+    `.bk-cell[data-room="${ev.room}"][data-time="${startSlot}"]`
+  );
+  if (!anchor) return;
+
+  const [fg, bg] = clubColor(ev.club);
+  const block = document.createElement('div');
+  block.className = 'bk-event' + (ev.conflict ? ' conflict-ev' : '');
+  block.style.cssText = `background:${bg};color:${fg};height:${heightPx}px;border-left:3px solid ${fg};`;
+  block.dataset.id = ev.id;
+  block.innerHTML  = `<div class="bk-event-name">${ev.name}</div>
+                      ${heightPx > 36 ? `<div class="bk-event-club">${ev.club}</div>` : ''}`;
+  block.draggable  = true;
+  block.addEventListener('dragstart', e => onPlacedDragStart(e, ev, block));
+  block.addEventListener('dragend',   onPlacedDragEnd);
+
+  anchor.appendChild(block);
+
+  // Mark cells occupied
+  for (let t = startSlot; t < endSlot; t += BK_STEP) {
+    const cell = document.querySelector(`.bk-cell[data-room="${ev.room}"][data-time="${t}"]`);
+    if (cell) cell.classList.add('occupied');
+  }
+}
+
+// ── Drag: pending card ──
+function onPendingDragStart(e, pev, card) {
+  bkDragging = { type: 'pending', pev, card };
+  card.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', pev.id);
+}
+function onPendingDragEnd(e) {
+  if (bkDragging?.card) bkDragging.card.classList.remove('dragging');
+}
+
+// ── Drag: placed block ──
+function onPlacedDragStart(e, ev, block) {
+  bkDragging = { type: 'placed', ev, block };
+  block.style.opacity = '0.4';
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onPlacedDragEnd(e) {
+  if (bkDragging?.block) bkDragging.block.style.opacity = '1';
+}
+
+// ── Drop on cell ──
+function onCellDragOver(e) {
+  e.preventDefault();
+  if (!bkDragging) return;
+  const cell = e.currentTarget;
+  const dur  = bkDragging.type === 'pending'
+    ? bkDragging.pev.durationMins
+    : (bkDragging.ev.endMin - bkDragging.ev.startMin);
+  const slots = dur / BK_STEP;
+  const startT = parseInt(cell.dataset.time);
+  const room   = cell.dataset.room;
+
+  // Check if fits
+  const events  = scheduleData[currentDay] || [];
+  const srcId   = bkDragging.type === 'placed' ? bkDragging.ev.id : null;
+  const conflict = events.some(ev => {
+    if (ev.room !== room || ev.id === srcId) return false;
+    const eStart = ev.startMin, eEnd = ev.endMin;
+    return startT < eEnd && (startT + dur) > eStart;
+  });
+
+  cell.classList.toggle('drag-over', !conflict);
+  cell.classList.toggle('no-drop',    conflict);
+  e.dataTransfer.dropEffect = conflict ? 'none' : 'move';
+}
+
+function onCellDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over', 'no-drop');
+}
+
+function onCellDrop(e) {
+  e.preventDefault();
+  const cell   = e.currentTarget;
+  cell.classList.remove('drag-over', 'no-drop');
+  if (!bkDragging) return;
+
+  const room   = cell.dataset.room;
+  const startT = parseInt(cell.dataset.time);
+
+  if (bkDragging.type === 'pending') {
+    const pev = bkDragging.pev;
+    const newEv = {
+      id: `added-${Date.now()}`,
+      name: pev.name,
+      club: pev.club,
+      room,
+      roomRaw: room,
+      startMin: startT,
+      endMin: startT + pev.durationMins,
+      conflict: false,
+    };
+    scheduleData[currentDay].push(newEv);
+    // Remove from pending
+    pendingEvents = pendingEvents.filter(p => p.id !== pev.id);
+    renderPendingList();
+  } else {
+    const ev = bkDragging.ev;
+    const dur = ev.endMin - ev.startMin;
+    ev.room     = room;
+    ev.roomRaw  = room;
+    ev.startMin = startT;
+    ev.endMin   = startT + dur;
+  }
+
+  detectConflicts(scheduleData[currentDay]);
+  renderBookingEvents();
+  bkDragging = null;
+}
+
+// ── Pending list ──
+function renderPendingList() {
+  const list = document.getElementById('pendingList');
+  if (!pendingEvents.length) {
+    list.innerHTML = `<div style="text-align:center;padding:24px 0;color:#3d4570;font-size:12px;">
+      Add event cards here.<br>Drag them onto the grid to schedule.</div>`;
+    return;
+  }
+  list.innerHTML = '';
+  pendingEvents.forEach(pev => {
+    const [fg, bg] = clubColor(pev.club);
+    const card = document.createElement('div');
+    card.className = 'pending-card';
+    card.draggable = true;
+    card.style.borderColor = fg;
+    card.innerHTML = `
+      <button class="pc-delete" onclick="deletePending('${pev.id}')">×</button>
+      <div class="pc-name">${pev.name}</div>
+      <div class="pc-club">${pev.club || 'No club'}</div>
+      <div class="pc-meta">
+        <span class="pc-tag dur">⏱ ${pev.durationMins / 60}h</span>
+        <span class="pc-tag">${DAY_LABELS[pev.day] || 'Day ?'}</span>
+      </div>`;
+    card.addEventListener('dragstart', e => onPendingDragStart(e, pev, card));
+    card.addEventListener('dragend',   onPendingDragEnd);
+    list.appendChild(card);
+  });
+}
+
+function deletePending(id) {
+  pendingEvents = pendingEvents.filter(p => p.id !== id);
+  renderPendingList();
+}
+
+// ── Add Event Modal ──
+function openAddModal() {
+  document.getElementById('addModal').classList.add('open');
+  document.getElementById('f-day').value = currentDay;
+}
+function closeAddModal() {
+  document.getElementById('addModal').classList.remove('open');
+}
+function submitAddModal() {
+  const name = document.getElementById('f-name').value.trim();
+  const club = document.getElementById('f-club').value.trim();
+  const dur  = parseFloat(document.getElementById('f-dur').value) || 1;
+  const day  = parseInt(document.getElementById('f-day').value);
+  if (!name) { document.getElementById('f-name').focus(); return; }
+
+  pendingEvents.push({
+    id: 'p-' + Date.now(),
+    name, club,
+    durationMins: dur * 60,
+    day,
+  });
+
+  // Switch to that day in booking view
+  currentDay = day;
+  updateTabs();
+  renderBookingEvents();
+  renderPendingList();
+  closeAddModal();
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-club').value = '';
+  document.getElementById('f-dur').value  = '2';
+}
+
+// ── View toggle ──
+let currentView = 'timeline';
+function setView(v) {
+  currentView = v;
+  document.getElementById('gridWrapper').style.display    = v === 'timeline' ? 'block' : 'none';
+  document.getElementById('mapView').classList.toggle('active', v === 'map');
+  document.getElementById('bookingView').classList.toggle('active', v === 'booking');
+
+  ['Timeline','Map','Booking'].forEach(n => {
+    const id = 'btn' + n, active = v === n.toLowerCase();
+    document.getElementById(id).style.background = active ? '#7c6af7' : 'transparent';
+    document.getElementById(id).style.color      = active ? 'white'   : '#5a6080';
+  });
+
+  if (v === 'map')     { renderMapPendingList(); refreshMapRooms(); }
+  if (v === 'booking') buildBookingGrid();
+}
+
+// ── NAB Map ──
+const NAB_ROOMS = ['6101','6102','6103','6104','6105','6106','6107','6108','6109','6110','6111',
+                   '6151','6152','6153','6154','6155','6156','6157','6158','6159','6160','6161','6162','6163','6164'];
+
+function refreshMapRooms() {
+  const events = scheduleData[currentDay] || [];
+  const sel    = selectedPending;
+
+  NAB_ROOMS.forEach(room => {
+    const el = document.getElementById('mr-' + room);
+    if (!el) return;
+    const roomEvents  = events.filter(e => e.room === room);
+    const hasConflict = roomEvents.some(e => e.conflict);
+    const count       = roomEvents.length;
+
+    el.className = 'map-room';
+
+    if (sel) {
+      // ── "Find slot" mode ──
+      const free = getFreeSlots(room, sel.durationMins).length > 0;
+      el.classList.add(free ? 'available' : 'unavailable');
+
+      const sub = free
+        ? `${getFreeSlots(room, sel.durationMins).length} free slot${getFreeSlots(room, sel.durationMins).length > 1 ? 's' : ''}`
+        : 'no free slot';
+
+      el.onclick = free ? () => openSlotModal(room, sel) : null;
+      el.onmouseenter = e => showMapTip(e, room);
+      el.onmouseleave = hideMapTip;
+      el.innerHTML = `
+        <div class="map-room-number">${room}</div>
+        <div class="map-room-count">${sub}</div>`;
+    } else {
+      // ── Normal browse mode ──
+      if (hasConflict)      el.classList.add('conflict-room');
+      else if (count === 0) el.classList.add('free');
+      else if (count === 1) el.classList.add('busy-low');
+      else if (count === 2) el.classList.add('busy-mid');
+      else                  el.classList.add('busy-high');
+
+      const dots = roomEvents.slice(0, 6).map(e => {
+        const [fg] = clubColor(e.club);
+        return `<div class="map-dot" style="background:${hasConflict ? '#f87171' : fg}"></div>`;
+      }).join('');
+
+      el.onclick       = () => openRoomPanel(room);
+      el.onmouseenter  = e => showMapTip(e, room);
+      el.onmouseleave  = hideMapTip;
+      el.innerHTML = `
+        <div class="map-room-number">${room}</div>
+        <div class="map-room-dot">${dots}</div>
+        <div class="map-room-count">${count === 0 ? 'free' : count + ' event' + (count > 1 ? 's' : '')}</div>`;
+    }
+  });
+}
+
+function showMapTip(e, room) {
+  const events = (scheduleData[currentDay] || []).filter(ev => ev.room === room);
+  const tt = document.getElementById('mapTooltip');
+  const dayLabel = DAY_LABELS[currentDay] || `Day ${currentDay}`;
+  const dateLabel = DAY_DATES[currentDay] || '';
+
+  let evHtml = events.length === 0
+    ? `<div class="map-tt-free">✓ No events — room is free</div>`
+    : events.map(ev => {
+        const [fg] = clubColor(ev.club);
+        return `
+          <div class="map-tt-event">
+            <div class="map-tt-dot" style="background:${ev.conflict ? '#f87171' : fg}"></div>
+            <div>
+              <div class="map-tt-name">${ev.name}${ev.conflict ? ' ⚠' : ''}</div>
+              <div class="map-tt-club">${ev.club || '—'}</div>
+              <div class="map-tt-time">${fmtTime(ev.startMin)} – ${fmtTime(ev.endMin)}</div>
+            </div>
+          </div>`;
+      }).join('');
+
+  tt.innerHTML = `
+    <div class="map-tt-header">
+      <div class="map-tt-room">Room ${room}</div>
+      <div class="map-tt-day">${dayLabel} · ${dateLabel}</div>
+    </div>
+    ${evHtml}
+  `;
+  tt.classList.add('visible');
+  posMapTip(e);
+}
+
+function posMapTip(e) {
+  const tt = document.getElementById('mapTooltip');
+  let x = e.clientX + 16, y = e.clientY + 16;
+  if (x + 280 > window.innerWidth)  x = e.clientX - 290;
+  if (y + 300 > window.innerHeight) y = e.clientY - 310;
+  tt.style.left = x + 'px';
+  tt.style.top  = y + 'px';
+}
+
+// ── Map sidebar pending list ──
+let selectedPending = null;
+
+function renderMapPendingList() {
+  const list = document.getElementById('mapPendingList');
+  const hint = document.getElementById('mapSidebarHint');
+  if (!pendingEvents.length) {
+    list.innerHTML = `<div style="font-size:11px;color:#3d4570;text-align:center;padding:16px 0">No pending events.<br>Create one below.</div>`;
+    hint.textContent = 'Create an event card to get started';
+    return;
+  }
+  hint.textContent = 'Click a card to find free rooms';
+  list.innerHTML = '';
+  pendingEvents.forEach(pev => {
+    const [fg] = clubColor(pev.club);
+    const card = document.createElement('div');
+    card.className = 'map-pcard' + (selectedPending?.id === pev.id ? ' selected' : '');
+    card.innerHTML = `
+      <div class="map-pcard-name">${pev.name}</div>
+      <div class="map-pcard-club">${pev.club || 'No club'}</div>
+      <div class="map-pcard-dur">⏱ ${pev.durationMins/60}h &nbsp;·&nbsp; ${DAY_LABELS[pev.day]||'Day?'}</div>`;
+    card.style.borderColor = selectedPending?.id === pev.id ? '#7c6af7' : fg + '55';
+    card.onclick = () => selectPendingForMap(pev);
+    list.appendChild(card);
+  });
+}
+
+function selectPendingForMap(pev) {
+  selectedPending = selectedPending?.id === pev.id ? null : pev;
+  renderMapPendingList();
+
+  if (selectedPending) {
+    // Switch map to the event's day
+    currentDay = selectedPending.day;
+    updateTabs();
+    document.querySelectorAll('.map-day-btn').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.day) === currentDay);
+    });
+    document.getElementById('mapTitleText').textContent =
+      `🏛 Showing free rooms for "${selectedPending.name}" (${selectedPending.durationMins/60}h)`;
+  } else {
+    document.getElementById('mapTitleText').textContent =
+      '🏛 New Academic Block — Interactive Floor Plan';
+  }
+  refreshMapRooms();
+}
+
+// Find free contiguous slots for a room on currentDay
+function getFreeSlots(room, durationMins) {
+  const events = (scheduleData[currentDay] || []).filter(e => e.room === room);
+  const slots = [];
+  // Try every 30-min mark from 8:00 to 23:00
+  for (let t = 480; t <= 1380 - durationMins; t += 30) {
+    const clash = events.some(e => e.startMin < t + durationMins && e.endMin > t);
+    if (!clash) slots.push(t);
+  }
+  // Merge into contiguous windows — just return start times, they're readable enough
+  return slots;
+}
+
+function openSlotModal(room, pev) {
+  const slots = getFreeSlots(room, pev.durationMins);
+  document.getElementById('slotModalTitle').textContent = `Book Room ${room}`;
+  document.getElementById('slotModalSub').textContent =
+    `${pev.name} · ${pev.durationMins/60}h · ${DAY_LABELS[currentDay]} ${DAY_DATES[currentDay]||''}`;
+
+  const list = document.getElementById('slotList');
+  if (!slots.length) {
+    list.innerHTML = `<div class="slot-none">No free slots of ${pev.durationMins/60}h found in this room today.</div>`;
+  } else {
+    list.innerHTML = '';
+    // Show only non-redundant start times (skip if covered by previous slot within 30 min)
+    slots.forEach(t => {
+      const item = document.createElement('div');
+      item.className = 'slot-item';
+      item.innerHTML = `
+        <span class="slot-time">${fmtTime(t)} – ${fmtTime(t + pev.durationMins)}</span>
+        <span class="slot-dur">${pev.durationMins/60}h</span>
+        <button class="slot-book-btn" onclick="bookFromMap('${room}',${t})">Book</button>`;
+      list.appendChild(item);
+    });
+  }
+  document.getElementById('slotModal').classList.add('open');
+}
+
+function closeSlotModal() {
+  document.getElementById('slotModal').classList.remove('open');
+}
+
+function bookFromMap(room, startMin) {
+  if (!selectedPending) return;
+  const pev = selectedPending;
+  const newEv = {
+    id: `booked-${Date.now()}`,
+    name: pev.name,
+    club: pev.club,
+    room, roomRaw: room,
+    startMin,
+    endMin: startMin + pev.durationMins,
+    conflict: false,
+  };
+  scheduleData[currentDay].push(newEv);
+  detectConflicts(scheduleData[currentDay]);
+
+  // Remove from pending
+  pendingEvents = pendingEvents.filter(p => p.id !== pev.id);
+  selectedPending = null;
+
+  closeSlotModal();
+  document.getElementById('mapTitleText').textContent = '🏛 New Academic Block — Interactive Floor Plan';
+  renderMapPendingList();
+  refreshMapRooms();
+  renderPendingList(); // keep booking view in sync
+}
+
+function setMapDay(el, day) {
+  currentDay = day;
+  document.querySelectorAll('.map-day-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  updateTabs();
+  refreshMapRooms();
+}
+
+function hideMapTip() {
+  document.getElementById('mapTooltip').classList.remove('visible');
+}
+
+// ── Stats ──
+function updateStats(events, conflictEvents) {
+  const roomSet = new Set(events.map(e => e.room));
+  document.getElementById('statEvents').textContent = `${events.length} events`;
+  document.getElementById('statRooms').textContent = `${roomSet.size} rooms`;
+  const cEl = document.getElementById('statConflicts');
+  if (conflictEvents.length) {
+    cEl.style.display = 'inline-block';
+    cEl.textContent = `⚠ ${conflictEvents.length} conflicts`;
+  } else {
+    cEl.style.display = 'none';
+  }
+}
+</script>
+</body>
+</html>
